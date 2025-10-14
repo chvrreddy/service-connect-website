@@ -1,0 +1,24 @@
+/* GLOBAL STYLES FOR SERVICE CONNECT MARKETPLACE 
+    
+    NOTE: No @tailwind directives are needed here because the CDN is used in index.html.
+    All sophisticated styling (colors, layout, shadows) is handled by Tailwind classes in App.js.
+*/
+
+body {
+  margin: 0;
+  /* Font is loaded via the link tag in index.html, but we set the font-family here for consistency */
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f7f9fa; /* Ensure a light base background */
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* Base link and button transitions for a smooth user experience */
+a, button {
+    transition: all 150ms ease-in-out;
+}
