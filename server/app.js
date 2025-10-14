@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const cors = require('cors'); // Import CORS middleware
 require('dotenv').config();
 
+// NOTE: Assumes 'middleware/auth.js' exists and handles JWT verification and attaches req.user
 const auth = require('./middleware/auth'); 
 
 const app = express();
@@ -32,6 +33,7 @@ const pool = new Pool({
 // Test database connection (Logs to console)
 pool.query('SELECT NOW()', (err, res) => {
     if (err) {
+        // If this fails, check your .env file and PostgreSQL server status.
         console.error('Database connection failed:', err);
     } else {
         console.log('Database connected successfully!');
@@ -40,8 +42,7 @@ pool.query('SELECT NOW()', (err, res) => {
 
 // --- HELPER FUNCTIONS ---
 
-// Haversine formula to calculate distance between two lat/lon points
-// Used for filtering providers by radius.
+// Haversine formula to calculate distance between two lat/lon points (in kilometers)
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
     const R = 6371; // Radius of Earth in kilometers
     const dLat = (lat2 - lat1) * (Math.PI / 180);
@@ -177,6 +178,7 @@ app.post('/api/v1/auth/register', async (req, res) => {
 
         // If user is a provider, create an initial provider profile
         if (role === 'provider') {
+            // Note: Location coordinates are placeholders; provider must update them in setup page.
             await pool.query(
                 'INSERT INTO providers (user_id, display_name, bio, location_lat, location_lon, service_radius_km) VALUES ($1, $2, $3, $4, $5, $6)',
                 [user_id, `New Provider ${user_id}`, 'A dedicated service provider.', 0, 0, 10]
@@ -354,6 +356,48 @@ app.post('/api/v1/auth/reset-password', async (req, res) => {
 // --- PROVIDER ROUTES ---
 
 /**
+ * @route GET /api/v1/provider/profile
+ * @desc Get provider profile details
+ * @access Private (Provider only)
+ */
+app.get('/api/v1/provider/profile', auth, async (req, res) => {
+    const { id: user_id, role } = req.user;
+    if (role !== 'provider') {
+        return res.status(403).json({ error: 'Access denied. Only providers can view profiles.' });
+    }
+    
+    try {
+        // Fetch provider profile and associated service IDs
+        const profileQuery = `
+            SELECT p.*, ARRAY_AGG(ps.service_id) AS service_ids
+            FROM providers p
+            LEFT JOIN provider_services ps ON p.id = ps.provider_id
+            WHERE p.user_id = $1
+            GROUP BY p.id;
+        `;
+        const result = await pool.query(profileQuery, [user_id]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Provider profile not found. Complete setup first.' });
+        }
+        
+        // Convert the aggregate array of service IDs (which might be null/empty) to a clean array
+        const profile = result.rows[0];
+        // Ensure service_ids is an array, even if empty
+        profile.service_ids = Array.isArray(profile.service_ids) ? profile.service_ids.filter(id => id !== null) : [];
+
+        res.status(200).json({ 
+            message: 'Provider profile retrieved successfully.', 
+            provider_profile: profile
+        });
+
+    } catch (err) {
+        console.error('Provider profile fetch error:', err);
+        res.status(500).json({ error: 'An error occurred during profile fetch.' });
+    }
+});
+
+/**
  * @route POST /api/v1/provider/profile
  * @desc Create or update provider profile details
  * @access Private (Provider only)
@@ -381,9 +425,20 @@ app.post('/api/v1/provider/profile', auth, async (req, res) => {
             WHERE user_id = $6
             RETURNING id;
         `;
+        // CORRECTED ORDER: $1=display_name, $2=bio, $3=location_lat, $4=location_lon, $5=service_radius_km, $6=user_id
         const result = await pool.query(updateQuery, [
-            display_name, bio, location_lat, location_lon, service_radius_km, user_id
+            display_name, 
+            bio, 
+            location_lat, 
+            location_lon, 
+            service_radius_km, 
+            user_id
         ]);
+
+        if (result.rows.length === 0) {
+             // Handle case where provider row might not exist (shouldn't happen after registration)
+             throw new Error('Provider record not found for this user_id.');
+        }
 
         const provider_id = result.rows[0].id;
 
@@ -405,8 +460,52 @@ app.post('/api/v1/provider/profile', auth, async (req, res) => {
 
     } catch (err) {
         await pool.query('ROLLBACK');
-        console.error('Provider profile update error:', err);
+        console.error('Provider profile update error (Details):', err); 
         res.status(500).json({ error: 'An error occurred during profile update.' });
+    }
+});
+
+
+/**
+ * @route GET /api/v1/provider/bookings
+ * @desc Get all bookings associated with the logged-in provider
+ * @access Private (Provider only)
+ */
+app.get('/api/v1/provider/bookings', auth, async (req, res) => {
+    const { id: provider_user_id, role } = req.user;
+    if (role !== 'provider') {
+        return res.status(403).json({ error: 'Access denied. Only providers can view their bookings.' });
+    }
+
+    try {
+        // 1. Find the provider's ID
+        const providerResult = await pool.query('SELECT id FROM providers WHERE user_id = $1', [provider_user_id]);
+        if (providerResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Provider profile not found.' });
+        }
+        const provider_id = providerResult.rows[0].id;
+
+        // 2. Fetch all bookings for that provider
+        const bookingsQuery = `
+            SELECT 
+                b.id, b.scheduled_at, b.address, b.customer_notes, b.booking_status, 
+                u.email AS customer_email, s.name AS service_name, b.customer_id
+            FROM bookings b
+            JOIN services s ON b.service_id = s.id
+            JOIN users u ON b.customer_id = u.id
+            WHERE b.provider_id = $1
+            ORDER BY b.scheduled_at DESC;
+        `;
+        const result = await pool.query(bookingsQuery, [provider_id]);
+
+        res.status(200).json({
+            message: `${result.rows.length} bookings retrieved.`,
+            bookings: result.rows
+        });
+        
+    } catch (err) {
+        console.error('Provider bookings fetch error:', err);
+        res.status(500).json({ error: 'An error occurred while fetching provider bookings.' });
     }
 });
 
@@ -523,6 +622,7 @@ app.post('/api/v1/bookings/:id/messages', auth, async (req, res) => {
 
     try {
         // 1. Verify the user is part of the booking and get recipient ID
+        // Note: This query checks if the sender is the customer OR the user_id linked to the provider_id
         const bookingResult = await pool.query(
             'SELECT customer_id, provider_id FROM bookings WHERE id = $1 AND (customer_id = $2 OR (SELECT user_id FROM providers WHERE id = provider_id) = $2)',
             [booking_id, sender_id]
@@ -533,9 +633,20 @@ app.post('/api/v1/bookings/:id/messages', auth, async (req, res) => {
         }
 
         const booking = bookingResult.rows[0];
-        const recipient_id = (sender_id === booking.customer_id) 
-            ? await pool.query('SELECT user_id FROM providers WHERE id = $1', [booking.provider_id]).then(r => r.rows[0].user_id)
-            : booking.customer_id;
+        
+        // Determine the recipient ID (the other party in the booking)
+        let recipient_id;
+        if (sender_id === booking.customer_id) {
+            // Sender is customer, recipient is provider's user_id
+            recipient_id = await pool.query('SELECT user_id FROM providers WHERE id = $1', [booking.provider_id]).then(r => r.rows[0]?.user_id);
+        } else {
+            // Sender is provider, recipient is customer_id
+            recipient_id = booking.customer_id;
+        }
+
+        if (!recipient_id) {
+            return res.status(404).json({ error: 'Recipient user ID could not be determined.' });
+        }
         
         // 2. Insert the message
         const messageInsert = await pool.query(
@@ -691,7 +802,7 @@ app.post('/api/v1/reviews', auth, async (req, res) => {
             [booking_id, customer_user_id, booking.provider_id, rating, comment]
         );
 
-        // 3. Update the provider's aggregate rating (complex but necessary)
+        // 3. Update the provider's aggregate rating 
         const aggregateResult = await client.query(
             `SELECT CAST(AVG(rating) AS DECIMAL(3, 2)) AS avg_rating, COUNT(id) AS review_count 
              FROM reviews WHERE provider_id = $1`,
@@ -750,23 +861,16 @@ app.get('/api/v1/admin/providers', auth, async (req, res) => {
         return res.status(403).json({ msg: 'Access denied. Admin role required.' });
     }
     try {
-        const query = `
-            SELECT 
-                p.id AS provider_id, p.display_name, p.is_verified, p.average_rating, u.email,
-                GROUP_CONCAT(s.name) AS services
-            FROM providers p
-            JOIN users u ON p.user_id = u.id
-            LEFT JOIN provider_services ps ON p.id = ps.provider_id
-            LEFT JOIN services s ON ps.service_id = s.id
-            GROUP BY p.id, u.email
-            ORDER BY p.id DESC;
-        `;
-        // NOTE: PostgreSQL does not have GROUP_CONCAT. Using a standard query here, but 
-        // the client side must handle the missing services field. For PostgreSQL, replace GROUP_CONCAT(s.name) with string_agg(s.name, ', ')
+        // Query to fetch all providers, joining user info and aggregating services offered
         const pgQuery = `
             SELECT 
-                p.id AS provider_id, p.display_name, p.is_verified, p.average_rating, u.email,
-                STRING_AGG(s.name, ', ') AS services
+                p.id AS id, 
+                p.display_name, 
+                p.is_verified, 
+                p.average_rating, 
+                p.review_count,
+                u.email,
+                STRING_AGG(s.name, ', ') AS services_offered
             FROM providers p
             JOIN users u ON p.user_id = u.id
             LEFT JOIN provider_services ps ON p.id = ps.provider_id
@@ -779,6 +883,41 @@ app.get('/api/v1/admin/providers', auth, async (req, res) => {
     } catch (err) {
         console.error('Admin provider fetch error:', err);
         res.status(500).json({ error: 'Failed to fetch provider list.' });
+    }
+});
+
+/**
+ * @route GET /api/v1/admin/bookings
+ * @desc Get list of all bookings 
+ * @access Private (Admin only)
+ */
+app.get('/api/v1/admin/bookings', auth, async (req, res) => {
+    // 1. Check if the user has the 'admin' role
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ msg: 'Access denied. Admin role required.' });
+    }
+    
+    try {
+        // 2. Query the database to get all bookings with necessary joins
+        const query = `
+            SELECT 
+                b.id, 
+                p.display_name AS provider_name, 
+                u.email AS customer_email,
+                b.scheduled_at, 
+                b.booking_status,
+                b.created_at
+            FROM bookings b
+            JOIN providers p ON b.provider_id = p.id
+            JOIN users u ON b.customer_id = u.id
+            ORDER BY b.created_at DESC;
+        `;
+        const result = await pool.query(query);
+
+        res.status(200).json(result.rows);
+    } catch (err) {
+        console.error('Admin bookings fetch error:', err);
+        res.status(500).json({ error: 'Failed to fetch booking list.' });
     }
 });
 

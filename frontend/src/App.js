@@ -305,6 +305,87 @@ const HowItWorksCard = ({ icon, title, description, stars }) => (
     </div>
 );
 
+const BookingCard = ({ booking, handleAction }) => {
+    // Helper to determine color based on status
+    const getStatusClasses = (status) => {
+        switch (status) {
+            case 'pending_provider': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+            case 'accepted': return 'bg-blue-100 text-blue-800 border-blue-300';
+            case 'completed': return 'bg-green-100 text-green-800 border-green-300';
+            case 'closed': return 'bg-gray-200 text-gray-700 border-gray-400';
+            case 'rejected': return 'bg-red-100 text-red-800 border-red-300';
+            default: return 'bg-gray-100 text-gray-600 border-gray-300';
+        }
+    };
+    
+    // Mock data for the booking card
+    const customerInfo = {
+        name: `Customer ${booking.customer_id}`,
+        phone: 'XX-XXXX-3456',
+        address: booking.address,
+    };
+    
+    return (
+        <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-6 mb-4 flex flex-col md:flex-row justify-between items-start md:items-center">
+            <div className="flex-grow space-y-2">
+                <div className="flex items-center space-x-3">
+                    <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${getStatusClasses(booking.booking_status)} uppercase`}>
+                        {booking.booking_status.replace('_', ' ')}
+                    </span>
+                    <p className="text-sm text-gray-500">Request ID: <span className="font-mono">{booking.id}</span></p>
+                </div>
+                
+                <h3 className="text-xl font-bold text-slate-800">
+                    Service: {booking.service_name || 'Plumbing Repair'}
+                </h3>
+                
+                <div className="text-gray-600 text-sm">
+                    <p>📅 **Scheduled:** {new Date(booking.scheduled_at).toLocaleString()}</p>
+                    <p>📍 **Location:** {customerInfo.address}</p>
+                    <p>👤 **Customer:** {customerInfo.name}</p>
+                    {booking.customer_notes && (
+                        <p className="mt-2 p-2 bg-gray-50 border-l-4 border-blue-400 italic">Notes: {booking.customer_notes}</p>
+                    )}
+                </div>
+            </div>
+            
+            {booking.booking_status === 'pending_provider' && (
+                <div className="flex mt-4 md:mt-0 space-x-3">
+                    <button 
+                        onClick={() => handleAction(booking.id, 'accepted')} 
+                        className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 transition shadow-md"
+                    >
+                        Accept
+                    </button>
+                    <button 
+                        onClick={() => handleAction(booking.id, 'rejected')} 
+                        className="bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600 transition shadow-md"
+                    >
+                        Reject
+                    </button>
+                </div>
+            )}
+            
+            {booking.booking_status === 'accepted' && (
+                 <div className="mt-4 md:mt-0">
+                    <button 
+                        onClick={() => handleAction(booking.id, 'completed')} 
+                        className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 transition shadow-md"
+                    >
+                        Mark Completed
+                    </button>
+                 </div>
+            )}
+            
+            {(booking.booking_status === 'rejected' || booking.booking_status === 'closed') && (
+                <div className="mt-4 md:mt-0">
+                    <p className="text-sm font-medium text-gray-500">No further action required.</p>
+                </div>
+            )}
+        </div>
+    );
+};
+
 // --- PAGE COMPONENTS ---
 
 const HomePage = ({ setPage, setSelectedService }) => {
@@ -563,6 +644,9 @@ const ProviderDetailPage = ({ provider, setPage }) => {
 // ...
 // ...
     const { isAuthenticated, setPage: navigate } = useAuth();
+    // ALERT FIX: Changed alert() to a simple console log for development purposes, as alerts break iframes.
+    const alert = (message) => console.log(`[UI Notification] ${message}`);
+    
     if (!provider) return <ErrorMessage message="No provider selected." />;
     
     // Mock Data for Detail Page
@@ -621,7 +705,7 @@ const ProviderDetailPage = ({ provider, setPage }) => {
                 <div className="grid md:grid-cols-3 gap-8 mb-10">
                     <div className="md:col-span-2">
                         <h2 className="text-2xl font-bold text-slate-700 mb-4 border-b pb-2">About the Professional</h2>
-                        <p className="text-gray-700 leading-relaxed mb-6">{provider.bio || "This professional has not yet provided a detailed biography."}</p>
+                        <p className="text-gray-700 leading-relaxed mb-4">{provider.bio || "This professional has not yet provided a detailed biography."}</p>
                         
                         <h3 className="text-xl font-bold text-slate-700 mb-3">Service Details</h3>
                         <ul className="list-disc list-inside text-gray-700 space-y-2">
@@ -658,7 +742,7 @@ const ProviderDetailPage = ({ provider, setPage }) => {
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg border">
                         <div className="font-semibold">Customer B <span className="text-amber-500 ml-2">⭐⭐⭐⭐</span></div>
-                        <p className="text-gray-700 text-sm mt-1">"Good work, but arrived 15 minutes late. Quality of repair was excellent."</p>
+                        <p className="text-700 text-sm mt-1">"Good work, but arrived 15 minutes late. Quality of repair was excellent."</p>
                         <span className="text-xs text-gray-500 mt-1 block">Date: 2025-09-15</span>
                     </div>
                 </div>
@@ -1166,24 +1250,288 @@ const CustomerDashboard = () => {
     );
 };
 
+// --- NEW PROVIDER DASHBOARD COMPONENTS ---
+
+const ProviderProfileManagement = () => {
+    const { user, token } = useAuth();
+    const [profile, setProfile] = useState(null);
+    const [services, setServices] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+
+    const fetchData = useCallback(async () => {
+        if (!token || user?.role !== 'provider') return;
+        setLoading(true);
+        setError('');
+        
+        try {
+            // 1. Fetch provider's profile
+            const res = await fetch(`${API_BASE_URL}/provider/profile`, {
+                headers: { 'x-auth-token': token },
+            });
+            const profileData = await res.json();
+            if (!res.ok) throw new Error(profileData.error || "Failed to fetch profile.");
+            setProfile(profileData.provider_profile);
+            
+            // 2. Fetch all service categories for the dropdown
+            const servicesRes = await fetch(`${API_BASE_URL}/services`);
+            const servicesData = await servicesRes.json();
+            setServices(servicesData || []);
+
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [token, user]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError(''); setSuccess('');
+        const formData = new FormData(e.target);
+        
+        const profileData = {
+            display_name: formData.get('display_name'),
+            bio: formData.get('bio'),
+            location_lat: parseFloat(formData.get('location_lat')),
+            location_lon: parseFloat(formData.get('location_lon')),
+            service_radius_km: parseInt(formData.get('service_radius_km'), 10),
+            // Assuming multi-select service_ids for future, currently single select for MVP
+            service_ids: [formData.get('primary_service_id')],
+        };
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/provider/profile`, {
+                method: 'POST', // POST is used for profile update/create in the current backend design
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-auth-token': token,
+                },
+                body: JSON.stringify(profileData),
+            });
+            const data = await response.json();
+            if (response.ok) {
+                setSuccess('Profile updated successfully!');
+                fetchData(); // Refresh data
+            } else {
+                setError(data.error || 'Failed to update profile.');
+            }
+        } catch (err) {
+            setError('A network error occurred while submitting the update.');
+        }
+    };
+    
+    if (loading) return <Spinner />;
+    if (error && !profile) return <ErrorMessage message={error} />;
+    if (!profile) return <ErrorMessage message="Provider profile data is missing. Please contact support." />;
+
+    // Helper to check if a service is currently selected (using the first service ID for simplicity)
+    const currentServiceId = profile.service_ids && profile.service_ids.length > 0 ? profile.service_ids[0] : (services[0]?.id || '');
+    
+    return (
+        <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-slate-700">Manage Your Public Profile</h2>
+            <p className="text-gray-600">Update your visibility, bio, location, and primary service offering.</p>
+            
+            {error && <ErrorMessage message={error}/>}
+            {success && <SuccessMessage message={success}/>}
+            
+            <form onSubmit={handleSubmit} className="space-y-6 bg-gray-50 p-6 rounded-xl border">
+                <div>
+                    <label htmlFor="display_name" className="block text-sm font-semibold text-gray-700">Display Name</label>
+                    <input id="display_name" name="display_name" type="text" defaultValue={profile.display_name} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
+                </div>
+                
+                 <div>
+                    <label htmlFor="primary_service_id" className="block text-sm font-semibold text-gray-700">Primary Service Category</label>
+                    <select id="primary_service_id" name="primary_service_id" defaultValue={currentServiceId} required 
+                        className="mt-1 block w-full pl-4 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition">
+                        {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                </div>
+                
+                <div>
+                    <label htmlFor="bio" className="block text-sm font-semibold text-gray-700">Short Bio / Expertise Summary</label>
+                    <textarea id="bio" name="bio" rows="4" defaultValue={profile.bio} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" placeholder="Describe your services and experience (Max 250 chars)..."></textarea>
+                </div>
+                
+                <h3 className="text-lg font-bold text-slate-700 border-b pb-2">Service Area</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                     <div>
+                        <label htmlFor="location_lat" className="block text-sm font-semibold text-gray-700">Location Latitude (Home Base)</label>
+                        <input id="location_lat" name="location_lat" type="number" step="any" defaultValue={profile.location_lat} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
+                    </div>
+                     <div>
+                        <label htmlFor="location_lon" className="block text-sm font-semibold text-gray-700">Location Longitude</label>
+                        <input id="location_lon" name="location_lon" type="number" step="any" defaultValue={profile.location_lon} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
+                    </div>
+                     <div>
+                        <label htmlFor="service_radius_km" className="block text-sm font-semibold text-gray-700">Service Radius (km)</label>
+                        <input id="service_radius_km" name="service_radius_km" type="number" defaultValue={profile.service_radius_km} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
+                    </div>
+                </div>
+                
+                <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition shadow-md">
+                    Save Profile Updates
+                </button>
+            </form>
+        </div>
+    );
+};
+
+const ProviderBookingRequests = () => {
+    const { token } = useAuth();
+    const [bookings, setBookings] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [updateStatus, setUpdateStatus] = useState(null);
+
+    const fetchBookings = useCallback(async () => {
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch(`${API_BASE_URL}/provider/bookings`, { // New backend route needed!
+                headers: { 'x-auth-token': token },
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Failed to fetch bookings.");
+            setBookings(data.bookings || []);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [token]);
+
+    useEffect(() => {
+        fetchBookings();
+    }, [fetchBookings]);
+
+    const handleAction = async (bookingId, status) => {
+        setUpdateStatus({ id: bookingId, loading: true });
+        setError('');
+        try {
+            const response = await fetch(`${API_BASE_URL}/bookings/${bookingId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-auth-token': token,
+                },
+                body: JSON.stringify({ status }),
+            });
+            const data = await response.json();
+            if (response.ok) {
+                // Success, refresh the list
+                fetchBookings();
+                setUpdateStatus({ id: bookingId, success: true, message: data.message });
+            } else {
+                setError(data.error || `Action failed for booking ${bookingId}.`);
+            }
+        } catch (err) {
+            setError('Network error during booking update.');
+        } finally {
+            setUpdateStatus(null);
+        }
+    };
+    
+    // Split bookings into active/pending and history
+    const pendingBookings = bookings.filter(b => b.booking_status === 'pending_provider' || b.booking_status === 'accepted');
+    const historyBookings = bookings.filter(b => b.booking_status === 'rejected' || b.booking_status === 'completed' || b.booking_status === 'closed');
+
+    return (
+        <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-slate-700">Incoming Booking Requests & Schedule</h2>
+            
+            {error && <ErrorMessage message={error}/>}
+            {updateStatus && updateStatus.success && <SuccessMessage message={updateStatus.message} />}
+
+            <h3 className="text-xl font-semibold text-slate-800 border-b pb-2 mt-8">Active/Pending ({pendingBookings.length})</h3>
+            {loading && pendingBookings.length === 0 && <Spinner />}
+            {!loading && pendingBookings.length === 0 && <p className="text-gray-500 p-4 bg-blue-50 rounded-lg border">You have no active or pending booking requests right now. Time for a break!</p>}
+
+            {pendingBookings.map(booking => (
+                <BookingCard key={booking.id} booking={booking} handleAction={handleAction} />
+            ))}
+            
+            <h3 className="text-xl font-semibold text-slate-800 border-b pb-2 mt-10">Booking History ({historyBookings.length})</h3>
+            {historyBookings.map(booking => (
+                <BookingCard key={booking.id} booking={booking} handleAction={() => {}} />
+            ))}
+
+        </div>
+    );
+};
+
+const ProviderEarnings = () => {
+    // Mock data for analytics
+    const mockData = {
+        totalEarnings: 8500,
+        completedJobs: 42,
+        avgRating: 4.85,
+        lastPayout: 2500,
+        nextPayout: '2025-11-01',
+    };
+    
+    return (
+        <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-slate-700">Your Payouts & Performance Analytics</h2>
+            <p className="text-gray-600">Track your total income and key performance indicators.</p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
+                <div className="bg-green-100 text-green-800 p-6 rounded-xl shadow-lg border border-green-300">
+                    <p className="text-sm font-medium">Total Earnings</p>
+                    <h3 className="text-3xl font-extrabold mt-1">₹{mockData.totalEarnings.toLocaleString()}</h3>
+                </div>
+                <div className="bg-blue-100 text-blue-800 p-6 rounded-xl shadow-lg border border-blue-300">
+                    <p className="text-sm font-medium">Completed Jobs</p>
+                    <h3 className="text-3xl font-extrabold mt-1">{mockData.completedJobs}</h3>
+                </div>
+                <div className="bg-amber-100 text-amber-800 p-6 rounded-xl shadow-lg border border-amber-300">
+                    <p className="text-sm font-medium">Average Rating</p>
+                    <h3 className="text-3xl font-extrabold mt-1">⭐ {mockData.avgRating.toFixed(2)}</h3>
+                </div>
+            </div>
+            
+            <div className="bg-white p-6 rounded-xl shadow-inner border border-gray-200">
+                <h3 className="text-xl font-bold text-slate-700 mb-4">Payout Schedule</h3>
+                <p className="text-gray-700">Last Payout Amount: **₹{mockData.lastPayout.toLocaleString()}**</p>
+                <p className="text-gray-700">Next Payout Date: **{mockData.nextPayout}**</p>
+                <p className="text-sm text-gray-500 mt-3">All payments are processed securely via our platform on a weekly cycle.</p>
+            </div>
+        </div>
+    );
+};
+
+
 const ProviderDashboard = () => {
-// ... (rest of ProviderDashboard component remains the same)
-// ...
-// ...
     const [activeTab, setActiveTab] = useState('bookings');
      const navItems = [
         { tab: 'bookings', label: 'Booking Requests' },
         { tab: 'earnings', label: 'Earnings & Payments' },
         { tab: 'profile', label: 'Profile Management' },
     ];
+    
+    const renderTab = () => {
+        switch (activeTab) {
+            case 'bookings': return <ProviderBookingRequests />;
+            case 'earnings': return <ProviderEarnings />;
+            case 'profile': return <ProviderProfileManagement />;
+            default: return <ProviderBookingRequests />;
+        }
+    };
+    
     return (
         <DashboardLayout navItems={navItems} activeTab={activeTab} setActiveTab={setActiveTab} title="Provider Dashboard">
-            {activeTab === 'bookings' && <div><h2 className="text-2xl font-semibold mb-4 text-slate-700">Incoming Bookings & Schedule</h2><p className="text-gray-600">Accept or reject new service requests and manage your schedule here.</p></div>}
-            {activeTab === 'earnings' && <div><h2 className="text-2xl font-semibold mb-4 text-slate-700">Your Payouts & Analytics</h2><p className="text-gray-600">Track your total earnings, completed jobs, and upcoming payouts.</p></div>}
-            {activeTab === 'profile' && <div><h2 className="text-2xl font-semibold mb-4 text-slate-700">Update Public Profile</h2><p className="text-gray-600">Update your bio, service radius, rates, and portfolio images.</p></div>}
+            {renderTab()}
         </DashboardLayout>
     );
 };
+
 
 const AdminDashboard = () => {
 // ... (rest of AdminDashboard component remains the same)
@@ -1393,7 +1741,23 @@ export default function App() {
             case 'home': return <HomePage setPage={navigate} setSelectedService={setSelectedService} />;
             case 'allServices': return <AllServicesPage setPage={navigate} setSelectedService={setSelectedService} />;
             case 'serviceProviders': return <ServiceProvidersPage service={selectedService} setPage={navigate} setSelectedProvider={setSelectedProvider} />;
-            case 'providerDetail': return <ProviderDetailPage provider={selectedProvider} setPage={navigate} />; 
+            case 'providerDetail': 
+                // Fix for ProviderDetailPage: added console log instead of alert()
+                const ProviderDetailWithFix = () => {
+                    const { isAuthenticated, setPage: navigate } = useAuth();
+                    const alert = (message) => console.log(`[UI Notification] ${message}`);
+                    
+                    const handleRequestService = () => {
+                        if (!isAuthenticated) {
+                            alert("Please log in or register to request a service.");
+                            navigate('login'); 
+                        } else {
+                            alert(`Ready to book ${selectedProvider?.display_name}. (Booking modal coming soon!)`);
+                        }
+                    };
+                    return <ProviderDetailPage provider={selectedProvider} setPage={navigate} handleRequestService={handleRequestService} />;
+                };
+                return <ProviderDetailWithFix />;
             case 'about': return <AboutPage />;
             case 'contact': return <ContactPage />;
             case 'login': return <LoginPage setPage={navigate} />;
