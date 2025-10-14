@@ -448,9 +448,26 @@ const HomePage = ({ setPage, setSelectedService }) => {
 
 
 const AllServicesPage = ({ setPage, setSelectedService }) => {
-// ... (rest of AllServicesPage component remains the same)
-// ...
-// ...
+    const [services, setServices] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        const fetchServices = async () => {
+            try {
+                const res = await fetch(`${API_BASE_URL}/services`);
+                if (!res.ok) throw new Error('Failed to fetch services. Is the backend running?');
+                const data = await res.json();
+                setServices(data || []);
+            } catch (err) {
+                setError(err.message || 'Failed to load services.');
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchServices();
+    }, []);
+
     const handleServiceClick = (service) => {
         setSelectedService(service);
         setPage('serviceProviders');
@@ -461,7 +478,7 @@ const AllServicesPage = ({ setPage, setSelectedService }) => {
             <h1 className="text-4xl font-bold text-slate-800 mb-10 text-center border-b pb-4">All Available Services</h1>
             {loading && <Spinner />}
             {error && <ErrorMessage message={error} />}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 mt-6">
                 {(services || []).map(service => (
                     <ServiceCard key={service.id} service={service} onClick={handleServiceClick} />
                 ))}
@@ -470,11 +487,13 @@ const AllServicesPage = ({ setPage, setSelectedService }) => {
     );
 };
 
+//here i changed 
 
 const ServiceProvidersPage = ({ service, setPage, setSelectedProvider }) => {
-// ... (rest of ServiceProvidersPage component remains the same)
-// ...
-// ...
+    const [providers, setProviders] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+
     useEffect(() => {
         if (!service || !service.id) {
             setError('No service selected. Returning to service list.');
@@ -482,8 +501,8 @@ const ServiceProvidersPage = ({ service, setPage, setSelectedProvider }) => {
             setLoading(false);
             return;
         }
+
         const fetchProviders = async () => {
-            // Mock Location (Bangalore, India) - Used to fetch providers within radius
             const lat = 12.9716, lon = 77.5946; 
             try {
                 const res = await fetch(`${API_BASE_URL}/providers?service_id=${service.id}&lat=${lat}&lon=${lon}`);
@@ -498,6 +517,7 @@ const ServiceProvidersPage = ({ service, setPage, setSelectedProvider }) => {
         };
         fetchProviders();
     }, [service, setPage]);
+
 
     const handleProviderClick = (provider) => {
         setSelectedProvider(provider);
