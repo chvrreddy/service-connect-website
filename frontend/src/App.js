@@ -40,8 +40,10 @@ const AuthProvider = ({ children }) => {
             const response = await fetch(`${API_BASE_URL}/user/profile`, {
                 headers: { 'x-auth-token': authToken },
             });
+            // CRITICAL FIX: Ensure parsing JSON only if response is successful
+            const data = await response.json();
+            
             if (response.ok) {
-                const data = await response.json();
                 setUser(data.user_profile);
             } else {
                 logout(); // Token is invalid or expired
@@ -305,7 +307,7 @@ const HowItWorksCard = ({ icon, title, description, stars }) => (
     </div>
 );
 
-const BookingCard = ({ booking, handleAction }) => {
+const BookingCard = ({ booking, handleAction, isCustomer }) => {
     // Helper to determine color based on status
     const getStatusClasses = (status) => {
         switch (status) {
@@ -318,37 +320,26 @@ const BookingCard = ({ booking, handleAction }) => {
         }
     };
     
-    // Mock data for the booking card
-    const customerInfo = {
-        name: `Customer ${booking.customer_id}`,
-        phone: 'XX-XXXX-3456',
-        address: booking.address,
-    };
+    // Determine title based on role
+    const title = isCustomer 
+        ? `Provider: ${booking.provider_name || 'N/A'}`
+        : `Service: ${booking.service_name || 'N/A'}`;
+        
+    const secondaryInfo = isCustomer 
+        ? `Service: ${booking.service_name || 'N/A'}`
+        : `Customer: ${booking.customer_email || 'N/A'}`;
     
-    return (
-        <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-6 mb-4 flex flex-col md:flex-row justify-between items-start md:items-center">
-            <div className="flex-grow space-y-2">
-                <div className="flex items-center space-x-3">
-                    <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${getStatusClasses(booking.booking_status)} uppercase`}>
-                        {booking.booking_status.replace('_', ' ')}
-                    </span>
-                    <p className="text-sm text-gray-500">Request ID: <span className="font-mono">{booking.id}</span></p>
-                </div>
-                
-                <h3 className="text-xl font-bold text-slate-800">
-                    Service: {booking.service_name || 'Plumbing Repair'}
-                </h3>
-                
-                <div className="text-gray-600 text-sm">
-                    <p>📅 **Scheduled:** {new Date(booking.scheduled_at).toLocaleString()}</p>
-                    <p>📍 **Location:** {customerInfo.address}</p>
-                    <p>👤 **Customer:** {customerInfo.name}</p>
-                    {booking.customer_notes && (
-                        <p className="mt-2 p-2 bg-gray-50 border-l-4 border-blue-400 italic">Notes: {booking.customer_notes}</p>
-                    )}
-                </div>
-            </div>
-            
+    const actions = isCustomer ? (
+        <button 
+            className={`bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-600 transition shadow-md ${
+                booking.booking_status === 'completed' ? '' : 'hidden'
+            }`}
+            onClick={() => console.log('Open Review/Payment Modal')}
+        >
+            Pay & Review
+        </button>
+    ) : (
+        <>
             {booking.booking_status === 'pending_provider' && (
                 <div className="flex mt-4 md:mt-0 space-x-3">
                     <button 
@@ -376,12 +367,35 @@ const BookingCard = ({ booking, handleAction }) => {
                     </button>
                  </div>
             )}
-            
-            {(booking.booking_status === 'rejected' || booking.booking_status === 'closed') && (
-                <div className="mt-4 md:mt-0">
-                    <p className="text-sm font-medium text-gray-500">No further action required.</p>
+        </>
+    );
+
+    
+    return (
+        <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-6 mb-4 flex flex-col md:flex-row justify-between items-start md:items-center">
+            <div className="flex-grow space-y-2">
+                <div className="flex items-center space-x-3">
+                    <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${getStatusClasses(booking.booking_status)} uppercase`}>
+                        {booking.booking_status.replace('_', ' ')}
+                    </span>
+                    <p className="text-sm text-gray-500">Request ID: <span className="font-mono">{booking.id}</span></p>
                 </div>
-            )}
+                
+                <h3 className="text-xl font-bold text-slate-800">{title}</h3>
+                
+                <div className="text-gray-600 text-sm">
+                    <p className="font-medium text-slate-800">{secondaryInfo}</p>
+                    <p>📅 **Scheduled:** {new Date(booking.scheduled_at).toLocaleString()}</p>
+                    <p>📍 **Location:** {booking.address}</p>
+                    {booking.customer_notes && (
+                        <p className="mt-2 p-2 bg-gray-50 border-l-4 border-blue-400 italic">Notes: {booking.customer_notes}</p>
+                    )}
+                </div>
+            </div>
+            
+            <div className="mt-4 md:mt-0">
+                {actions}
+            </div>
         </div>
     );
 };
@@ -584,6 +598,7 @@ const ServiceProvidersPage = ({ service, setPage, setSelectedProvider }) => {
         }
 
         const fetchProviders = async () => {
+            // Hardcoded lat/lon for initial search
             const lat = 12.9716, lon = 77.5946; 
             try {
                 const res = await fetch(`${API_BASE_URL}/providers?service_id=${service.id}&lat=${lat}&lon=${lon}`);
@@ -1191,7 +1206,7 @@ const ProviderSetupPage = ({ setPage, pageData }) => {
 };
 
 
-// --- Dashboard Pages ---
+// --- Dashboard Layout and Helper Components ---
 
 const DashboardLayout = ({ children, navItems, activeTab, setActiveTab, title }) => {
 // ... (rest of DashboardLayout component remains the same)
@@ -1231,26 +1246,164 @@ const DashboardLayout = ({ children, navItems, activeTab, setActiveTab, title })
     );
 };
 
+// --- CUSTOMER DASHBOARD COMPONENTS ---
+
+const CustomerBookingHistory = () => {
+    const { token, user } = useAuth();
+    const [bookings, setBookings] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    
+    const fetchBookings = useCallback(async () => {
+        if (!token || user?.role !== 'customer') return;
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch(`${API_BASE_URL}/customer/bookings`, { // New backend route needed!
+                headers: { 'x-auth-token': token },
+            });
+            
+            if (!res.ok) {
+                 const errorText = await res.json();
+                 throw new Error(errorText.error || `Failed to fetch bookings. Status: ${res.status}`);
+            }
+            
+            const data = await res.json();
+            setBookings(data.bookings || []);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [token, user]);
+
+    useEffect(() => {
+        fetchBookings();
+    }, [fetchBookings]);
+
+
+    return (
+        <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-slate-700">Your Booking History</h2>
+            <p className="text-gray-600">Track the status of your requested services and access payment options.</p>
+            
+            {error && <ErrorMessage message={error}/>}
+            {loading && <Spinner />}
+            
+            {!loading && bookings.length === 0 && <p className="text-center text-gray-500 bg-gray-100 p-10 rounded-xl shadow-inner">
+                You haven't placed any bookings yet. Find a service now!
+            </p>}
+
+            {bookings.map(booking => (
+                <BookingCard key={booking.id} booking={booking} isCustomer={true} handleAction={() => {}} />
+            ))}
+        </div>
+    );
+};
+
+const CustomerProfileManagement = () => {
+    const { user, token, fetchUserProfile } = useAuth();
+    const [currentEmail, setCurrentEmail] = useState(user?.email || '');
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        setCurrentEmail(user?.email || '');
+    }, [user]);
+    
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError(''); setSuccess(''); setLoading(true);
+
+        const newEmail = e.target.email.value;
+
+        if (newEmail === user.email) {
+            setError('The new email must be different from the current email.');
+            setLoading(false);
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/user/profile`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-auth-token': token,
+                },
+                body: JSON.stringify({ email: newEmail }),
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                setSuccess('Profile updated successfully! Refreshing data...');
+                setCurrentEmail(newEmail);
+                fetchUserProfile(token); // Re-fetch profile to update context
+            } else {
+                setError(data.error || 'Failed to update profile. Email might be in use.');
+            }
+        } catch (err) {
+            setError('A network error occurred while submitting the update.');
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    return (
+        <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-slate-700">Account Settings</h2>
+            <p className="text-gray-600">Manage your basic account information.</p>
+            
+            {error && <ErrorMessage message={error}/>}
+            {success && <SuccessMessage message={success}/>}
+            
+            <form onSubmit={handleSubmit} className="space-y-6 bg-gray-50 p-6 rounded-xl border max-w-lg">
+                <div>
+                    <label htmlFor="email" className="block text-sm font-semibold text-gray-700">Email Address</label>
+                    <input 
+                        id="email" 
+                        name="email" 
+                        type="email" 
+                        defaultValue={currentEmail} 
+                        required 
+                        className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" 
+                        disabled={loading}
+                    />
+                </div>
+                
+                <p className="text-sm text-gray-500">Your Role: <span className="font-semibold text-blue-600">{user?.role?.toUpperCase()}</span></p>
+                
+                <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition shadow-md disabled:bg-gray-400">
+                    {loading ? 'Saving...' : 'Update Profile'}
+                </button>
+            </form>
+        </div>
+    );
+}
 
 const CustomerDashboard = () => {
-// ... (rest of CustomerDashboard component remains the same)
-// ...
-// ...
     const [activeTab, setActiveTab] = useState('bookings');
-    const { user } = useAuth();
     const navItems = [
         { tab: 'bookings', label: 'My Bookings' },
         { tab: 'profile', label: 'My Profile' },
     ];
+    
+    const renderTab = () => {
+        switch (activeTab) {
+            case 'bookings': return <CustomerBookingHistory />;
+            case 'profile': return <CustomerProfileManagement />;
+            default: return <CustomerBookingHistory />;
+        }
+    }
+    
     return (
         <DashboardLayout navItems={navItems} activeTab={activeTab} setActiveTab={setActiveTab} title="Customer Dashboard">
-            {activeTab === 'bookings' && <div><h2 className="text-2xl font-semibold mb-4 text-slate-700">Your Booking History</h2><p className="text-gray-600">This area will display your requested, accepted, and completed services.</p></div>}
-            {activeTab === 'profile' && <div><h2 className="text-2xl font-semibold mb-4 text-slate-700">Account Settings</h2><p className="text-gray-600">Manage your profile information and saved addresses.</p><p className="mt-4 font-medium">Your Role: <span className="text-blue-600">{user.role.toUpperCase()}</span></p></div>}
+            {renderTab()}
         </DashboardLayout>
     );
 };
 
-// --- NEW PROVIDER DASHBOARD COMPONENTS ---
 
 const ProviderProfileManagement = () => {
     const { user, token } = useAuth();
@@ -1261,17 +1414,25 @@ const ProviderProfileManagement = () => {
     const [success, setSuccess] = useState('');
 
     const fetchData = useCallback(async () => {
-        if (!token || user?.role !== 'provider') return;
+        if (!token || user?.role !== 'provider') {
+             setLoading(false);
+             return;
+        }
         setLoading(true);
         setError('');
         
         try {
-            // 1. Fetch provider's profile
+            // 1. Fetch provider's profile (GET route is now active in backend)
             const res = await fetch(`${API_BASE_URL}/provider/profile`, {
                 headers: { 'x-auth-token': token },
             });
+            
+            // CRITICAL FIX: Only call .json() on success. If !res.ok, read text/error message.
+            if (!res.ok) {
+                const errorText = await res.json(); 
+                throw new Error(errorText.error || `Failed to fetch profile. Status: ${res.status}`);
+            }
             const profileData = await res.json();
-            if (!res.ok) throw new Error(profileData.error || "Failed to fetch profile.");
             setProfile(profileData.provider_profile);
             
             // 2. Fetch all service categories for the dropdown
@@ -1295,14 +1456,20 @@ const ProviderProfileManagement = () => {
         setError(''); setSuccess('');
         const formData = new FormData(e.target);
         
+        const serviceIds = formData.get('primary_service_id') ? [formData.get('primary_service_id')] : [];
+        
+        if (serviceIds.length === 0) {
+            setError('Please select a primary service category.');
+            return;
+        }
+        
         const profileData = {
             display_name: formData.get('display_name'),
             bio: formData.get('bio'),
             location_lat: parseFloat(formData.get('location_lat')),
             location_lon: parseFloat(formData.get('location_lon')),
             service_radius_km: parseInt(formData.get('service_radius_km'), 10),
-            // Assuming multi-select service_ids for future, currently single select for MVP
-            service_ids: [formData.get('primary_service_id')],
+            service_ids: serviceIds,
         };
         
         try {
@@ -1314,7 +1481,10 @@ const ProviderProfileManagement = () => {
                 },
                 body: JSON.stringify(profileData),
             });
+            
+             // CRITICAL FIX: Only call .json() on success.
             const data = await response.json();
+            
             if (response.ok) {
                 setSuccess('Profile updated successfully!');
                 fetchData(); // Refresh data
@@ -1328,10 +1498,12 @@ const ProviderProfileManagement = () => {
     
     if (loading) return <Spinner />;
     if (error && !profile) return <ErrorMessage message={error} />;
-    if (!profile) return <ErrorMessage message="Provider profile data is missing. Please contact support." />;
+    if (!profile) return <ErrorMessage message="Provider profile data is missing. Please contact support or complete initial setup." />;
 
-    // Helper to check if a service is currently selected (using the first service ID for simplicity)
-    const currentServiceId = profile.service_ids && profile.service_ids.length > 0 ? profile.service_ids[0] : (services[0]?.id || '');
+    // Ensure service_ids is defined before accessing [0]
+    const currentServiceId = profile.service_ids && profile.service_ids.length > 0 
+        ? profile.service_ids[0] 
+        : (services[0]?.id || '');
     
     return (
         <div className="space-y-6">
@@ -1395,11 +1567,18 @@ const ProviderBookingRequests = () => {
         setLoading(true);
         setError('');
         try {
-            const res = await fetch(`${API_BASE_URL}/provider/bookings`, { // New backend route needed!
+            // Updated endpoint to use the correct GET route
+            const res = await fetch(`${API_BASE_URL}/provider/bookings`, { 
                 headers: { 'x-auth-token': token },
             });
+            
+             // CRITICAL FIX: Only call .json() on success.
+            if (!res.ok) {
+                 const errorText = await res.json();
+                 throw new Error(errorText.error || `Failed to fetch bookings. Status: ${res.status}`);
+            }
+            
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Failed to fetch bookings.");
             setBookings(data.bookings || []);
         } catch (err) {
             setError(err.message);
@@ -1424,14 +1603,19 @@ const ProviderBookingRequests = () => {
                 },
                 body: JSON.stringify({ status }),
             });
+            
+             // CRITICAL FIX: Only call .json() on success.
+            if (!response.ok) {
+                const errorText = await response.json();
+                throw new Error(errorText.error || `Action failed for booking ${bookingId}. Status: ${response.status}`);
+            }
+            
             const data = await response.json();
             if (response.ok) {
                 // Success, refresh the list
                 fetchBookings();
                 setUpdateStatus({ id: bookingId, success: true, message: data.message });
-            } else {
-                setError(data.error || `Action failed for booking ${bookingId}.`);
-            }
+            } 
         } catch (err) {
             setError('Network error during booking update.');
         } finally {
@@ -1455,12 +1639,12 @@ const ProviderBookingRequests = () => {
             {!loading && pendingBookings.length === 0 && <p className="text-gray-500 p-4 bg-blue-50 rounded-lg border">You have no active or pending booking requests right now. Time for a break!</p>}
 
             {pendingBookings.map(booking => (
-                <BookingCard key={booking.id} booking={booking} handleAction={handleAction} />
+                <BookingCard key={booking.id} booking={booking} isCustomer={false} handleAction={handleAction} />
             ))}
             
             <h3 className="text-xl font-semibold text-slate-800 border-b pb-2 mt-10">Booking History ({historyBookings.length})</h3>
             {historyBookings.map(booking => (
-                <BookingCard key={booking.id} booking={booking} handleAction={() => {}} />
+                <BookingCard key={booking.id} booking={booking} isCustomer={false} handleAction={() => {}} />
             ))}
 
         </div>
@@ -1559,7 +1743,11 @@ const AdminDashboard = () => {
             const res = await fetch(`${API_BASE_URL}/admin/${endpoint}`, {
                 headers: { 'x-auth-token': token },
             });
-            if (!res.ok) throw new Error('Failed to fetch admin data. Check authorization.');
+            // CRITICAL FIX: Only call .json() on success.
+            if (!res.ok) {
+                const errorText = await res.json();
+                throw new Error(errorText.error || 'Failed to fetch admin data. Check authorization.');
+            }
             const data = await res.json();
             setter(data);
         } catch (err) {
@@ -1581,7 +1769,12 @@ const AdminDashboard = () => {
                 },
                 body: JSON.stringify({ is_verified: newStatus }),
             });
-            if (!res.ok) throw new Error(`Failed to ${newStatus ? 'verify' : 'un-verify'} provider.`);
+            
+            // CRITICAL FIX: Only call .json() on success.
+            if (!res.ok) {
+                const errorText = await res.json();
+                throw new Error(errorText.error || `Failed to ${newStatus ? 'verify' : 'un-verify'} provider.`);
+            }
             
             // Re-fetch provider list to update UI
             await fetchData('providers', setProviders);

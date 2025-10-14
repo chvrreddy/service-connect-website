@@ -273,6 +273,44 @@ app.get('/api/v1/user/profile', auth, async (req, res) => {
 });
 
 /**
+ * @route PUT /api/v1/user/profile
+ * @desc Update authenticated user profile data (e.g., email, eventually other fields)
+ * @access Private
+ */
+app.put('/api/v1/user/profile', auth, async (req, res) => {
+    const { email } = req.body;
+    const user_id = req.user.id;
+
+    if (!email) {
+        return res.status(400).json({ error: 'Email is required for update.' });
+    }
+
+    try {
+        // 1. Check if the new email already exists for another user
+        const emailCheck = await pool.query('SELECT id FROM users WHERE email = $1 AND id != $2', [email, user_id]);
+        if (emailCheck.rows.length > 0) {
+            return res.status(409).json({ error: 'Email already in use by another account.' });
+        }
+        
+        // 2. Update the user record
+        const result = await pool.query(
+            'UPDATE users SET email = $1 WHERE id = $2 RETURNING id, email, role, created_at',
+            [email, user_id]
+        );
+        
+        // 3. Re-fetch and return the updated profile (optional, but clean)
+        res.status(200).json({
+            message: 'Profile updated successfully.',
+            user_profile: result.rows[0]
+        });
+        
+    } catch (err) {
+        console.error('User profile update error:', err);
+        res.status(500).json({ error: 'An error occurred during profile update.' });
+    }
+});
+
+/**
  * @route POST /api/v1/auth/forgot-password
  * @desc Request a password reset OTP
  * @access Public
@@ -506,6 +544,42 @@ app.get('/api/v1/provider/bookings', auth, async (req, res) => {
     } catch (err) {
         console.error('Provider bookings fetch error:', err);
         res.status(500).json({ error: 'An error occurred while fetching provider bookings.' });
+    }
+});
+
+/**
+ * @route GET /api/v1/customer/bookings
+ * @desc Get all bookings associated with the logged-in customer
+ * @access Private (Customer only)
+ */
+app.get('/api/v1/customer/bookings', auth, async (req, res) => {
+    const { id: customer_user_id, role } = req.user;
+    if (role !== 'customer') {
+        return res.status(403).json({ error: 'Access denied. Only customers can view their bookings.' });
+    }
+
+    try {
+        // Fetch all bookings for that customer
+        const bookingsQuery = `
+            SELECT 
+                b.id, b.scheduled_at, b.address, b.customer_notes, b.booking_status, 
+                p.display_name AS provider_name, s.name AS service_name, b.provider_id
+            FROM bookings b
+            JOIN providers p ON b.provider_id = p.id
+            JOIN services s ON b.service_id = s.id
+            WHERE b.customer_id = $1
+            ORDER BY b.scheduled_at DESC;
+        `;
+        const result = await pool.query(bookingsQuery, [customer_user_id]);
+
+        res.status(200).json({
+            message: `${result.rows.length} bookings retrieved.`,
+            bookings: result.rows
+        });
+        
+    } catch (err) {
+        console.error('Customer bookings fetch error:', err);
+        res.status(500).json({ error: 'An error occurred while fetching customer bookings.' });
     }
 });
 
