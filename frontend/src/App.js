@@ -44,6 +44,7 @@ const AuthProvider = ({ children }) => {
             const data = await response.json();
             
             if (response.ok) {
+                // The backend now returns user and nested 'profile' data for customers
                 setUser(data.user_profile);
             } else {
                 logout(); // Token is invalid or expired
@@ -757,7 +758,7 @@ const ProviderDetailPage = ({ provider, setPage }) => {
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg border">
                         <div className="font-semibold">Customer B <span className="text-amber-500 ml-2">⭐⭐⭐⭐</span></div>
-                        <p className="text-700 text-sm mt-1">"Good work, but arrived 15 minutes late. Quality of repair was excellent."</p>
+                        <p className="text-gray-700 text-sm mt-1">"Good work, but arrived 15 minutes late. Quality of repair was excellent."</p>
                         <span className="text-xs text-gray-500 mt-1 block">Date: 2025-09-15</span>
                     </div>
                 </div>
@@ -1303,26 +1304,39 @@ const CustomerBookingHistory = () => {
 
 const CustomerProfileManagement = () => {
     const { user, token, fetchUserProfile } = useAuth();
-    const [currentEmail, setCurrentEmail] = useState(user?.email || '');
+    const [profileData, setProfileData] = useState({
+        email: user?.email || '',
+        full_name: user?.profile?.full_name || '',
+        phone_number: user?.profile?.phone_number || '',
+        address_line_1: user?.profile?.address_line_1 || '',
+        city: user?.profile?.city || '',
+        zip_code: user?.profile?.zip_code || '',
+    });
+    
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        setCurrentEmail(user?.email || '');
+        if (user) {
+            setProfileData({
+                email: user.email || '',
+                full_name: user.profile?.full_name || '',
+                phone_number: user.profile?.phone_number || '',
+                address_line_1: user.profile?.address_line_1 || '',
+                city: user.profile?.city || '',
+                zip_code: user.profile?.zip_code || '',
+            });
+        }
     }, [user]);
+    
+    const handleChange = (e) => {
+        setProfileData({ ...profileData, [e.target.name]: e.target.value });
+    };
     
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError(''); setSuccess(''); setLoading(true);
-
-        const newEmail = e.target.email.value;
-
-        if (newEmail === user.email) {
-            setError('The new email must be different from the current email.');
-            setLoading(false);
-            return;
-        }
 
         try {
             const response = await fetch(`${API_BASE_URL}/user/profile`, {
@@ -1331,15 +1345,15 @@ const CustomerProfileManagement = () => {
                     'Content-Type': 'application/json',
                     'x-auth-token': token,
                 },
-                body: JSON.stringify({ email: newEmail }),
+                body: JSON.stringify(profileData),
             });
             
             const data = await response.json();
             
             if (response.ok) {
                 setSuccess('Profile updated successfully! Refreshing data...');
-                setCurrentEmail(newEmail);
-                fetchUserProfile(token); // Re-fetch profile to update context
+                // IMPORTANT: Re-fetch profile to update global context and local state
+                await fetchUserProfile(token); 
             } else {
                 setError(data.error || 'Failed to update profile. Email might be in use.');
             }
@@ -1352,26 +1366,56 @@ const CustomerProfileManagement = () => {
     
     return (
         <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-slate-700">Account Settings</h2>
-            <p className="text-gray-600">Manage your basic account information.</p>
+            <h2 className="text-2xl font-bold text-slate-700">Account & Contact Settings</h2>
+            <p className="text-gray-600">Update your email and personal contact details.</p>
             
             {error && <ErrorMessage message={error}/>}
             {success && <SuccessMessage message={success}/>}
             
-            <form onSubmit={handleSubmit} className="space-y-6 bg-gray-50 p-6 rounded-xl border max-w-lg">
+            <form onSubmit={handleSubmit} className="space-y-6 bg-gray-50 p-6 rounded-xl border max-w-2xl">
+                <h3 className="text-lg font-semibold text-blue-600 border-b pb-2">Account Details</h3>
                 <div>
-                    <label htmlFor="email" className="block text-sm font-semibold text-gray-700">Email Address</label>
+                    <label htmlFor="email" className="block text-sm font-semibold text-gray-700">Email Address (Login)</label>
                     <input 
                         id="email" 
                         name="email" 
                         type="email" 
-                        defaultValue={currentEmail} 
+                        value={profileData.email}
+                        onChange={handleChange}
                         required 
                         className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" 
                         disabled={loading}
                     />
                 </div>
+
+                <h3 className="text-lg font-semibold text-blue-600 border-b pb-2 pt-4">Personal Details</h3>
+                <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                        <label htmlFor="full_name" className="block text-sm font-semibold text-gray-700">Full Name</label>
+                        <input id="full_name" name="full_name" type="text" value={profileData.full_name} onChange={handleChange} className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
+                    </div>
+                    <div>
+                        <label htmlFor="phone_number" className="block text-sm font-semibold text-gray-700">Phone Number</label>
+                        <input id="phone_number" name="phone_number" type="tel" value={profileData.phone_number} onChange={handleChange} className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
+                    </div>
+                </div>
                 
+                <h3 className="text-lg font-semibold text-blue-600 border-b pb-2 pt-4">Default Address</h3>
+                 <div>
+                    <label htmlFor="address_line_1" className="block text-sm font-semibold text-gray-700">Address Line 1</label>
+                    <input id="address_line_1" name="address_line_1" type="text" value={profileData.address_line_1} onChange={handleChange} className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
+                </div>
+                <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                        <label htmlFor="city" className="block text-sm font-semibold text-gray-700">City</label>
+                        <input id="city" name="city" type="text" value={profileData.city} onChange={handleChange} className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
+                    </div>
+                    <div>
+                        <label htmlFor="zip_code" className="block text-sm font-semibold text-gray-700">Zip Code</label>
+                        <input id="zip_code" name="zip_code" type="text" value={profileData.zip_code} onChange={handleChange} className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
+                    </div>
+                </div>
+
                 <p className="text-sm text-gray-500">Your Role: <span className="font-semibold text-blue-600">{user?.role?.toUpperCase()}</span></p>
                 
                 <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition shadow-md disabled:bg-gray-400">
@@ -1382,10 +1426,30 @@ const CustomerProfileManagement = () => {
     );
 }
 
-const CustomerDashboard = () => {
+const CustomerFindServices = ({ setPage }) => (
+    <div className="space-y-6">
+        <h2 className="text-2xl font-bold text-slate-700">Find New Services</h2>
+        <p className="text-gray-600">Need help with a home repair, maintenance, or consultation? Find trusted local professionals here.</p>
+        
+        <div className="bg-blue-50 p-6 rounded-xl border border-blue-200 flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
+            <p className="text-lg font-semibold text-blue-800">Explore all categories now!</p>
+            <button 
+                onClick={() => setPage('allServices')}
+                className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 transition shadow-md w-full sm:w-auto"
+            >
+                Browse Services
+            </button>
+        </div>
+    </div>
+);
+
+
+const CustomerDashboard = ({ setPage }) => {
     const [activeTab, setActiveTab] = useState('bookings');
     const navItems = [
         { tab: 'bookings', label: 'My Bookings' },
+        // NEW TAB for visibility
+        { tab: 'findServices', label: 'Find a Service' }, 
         { tab: 'profile', label: 'My Profile' },
     ];
     
@@ -1393,6 +1457,8 @@ const CustomerDashboard = () => {
         switch (activeTab) {
             case 'bookings': return <CustomerBookingHistory />;
             case 'profile': return <CustomerProfileManagement />;
+            // NEW TAB implementation
+            case 'findServices': return <CustomerFindServices setPage={setPage} />;
             default: return <CustomerBookingHistory />;
         }
     }
@@ -1957,7 +2023,7 @@ export default function App() {
             case 'register': return <RegisterPage setPage={navigate} />;
             case 'forgotPassword': return <ForgotPasswordPage setPage={navigate} />; 
             case 'providerSetup': return <ProviderSetupPage setPage={navigate} pageData={pageData} />;
-            case 'customerDashboard': return <CustomerDashboard />;
+            case 'customerDashboard': return <CustomerDashboard setPage={navigate} />; // Pass setPage here
             case 'providerDashboard': return <ProviderDashboard />;
             case 'adminDashboard': return <AdminDashboard />;
             default: return <HomePage setPage={navigate} setSelectedService={setSelectedService} />;

@@ -176,12 +176,18 @@ app.post('/api/v1/auth/register', async (req, res) => {
         );
         const user_id = userInsert.rows[0].id;
 
-        // If user is a provider, create an initial provider profile
+        // Create associated profile based on role
         if (role === 'provider') {
             // Note: Location coordinates are placeholders; provider must update them in setup page.
             await pool.query(
                 'INSERT INTO providers (user_id, display_name, bio, location_lat, location_lon, service_radius_km) VALUES ($1, $2, $3, $4, $5, $6)',
                 [user_id, `New Provider ${user_id}`, 'A dedicated service provider.', 0, 0, 10]
+            );
+        } else if (role === 'customer') {
+             // NEW: Create a default customer profile entry
+            await pool.query(
+                'INSERT INTO customer_profiles (user_id, full_name, phone_number) VALUES ($1, $2, $3)',
+                [user_id, 'New Customer', null] // Name is a placeholder, user can update later
             );
         }
 
@@ -254,14 +260,33 @@ app.post('/api/v1/auth/login', async (req, res) => {
  * @access Private
  */
 app.get('/api/v1/user/profile', auth, async (req, res) => {
+    const user_id = req.user.id;
+    const role = req.user.role;
+    
     try {
-        // req.user is attached by the 'auth' middleware
-        const userResult = await pool.query('SELECT id, email, role, created_at FROM users WHERE id = $1', [req.user.id]);
+        // Base user data
+        const userResult = await pool.query('SELECT id, email, role, created_at FROM users WHERE id = $1', [user_id]);
         const user = userResult.rows[0];
 
         if (!user) {
             return res.status(404).json({ msg: 'User not found.' });
         }
+        
+        // Fetch specific profile data based on role
+        if (role === 'customer') {
+            // Join users and customer_profiles
+            const profileQuery = `
+                SELECT 
+                    cp.full_name, cp.phone_number, cp.address_line_1, cp.city, cp.zip_code
+                FROM customer_profiles cp
+                WHERE cp.user_id = $1
+            `;
+            const profileResult = await pool.query(profileQuery, [user_id]);
+            // If profile exists, merge fields under 'profile' key
+            user.profile = profileResult.rows[0] || {}; 
+        }
+        // Provider profile data is fetched via the dedicated /provider/profile route when needed
+
         res.status(200).json({
             message: 'Profile data retrieved successfully.',
             user_profile: user
@@ -274,39 +299,76 @@ app.get('/api/v1/user/profile', auth, async (req, res) => {
 
 /**
  * @route PUT /api/v1/user/profile
- * @desc Update authenticated user profile data (e.g., email, eventually other fields)
+ * @desc Update authenticated user profile data (email and customer profile details)
  * @access Private
  */
 app.put('/api/v1/user/profile', auth, async (req, res) => {
-    const { email } = req.body;
+    // Note: full_name and other fields are optional for update, but email is required by frontend form logic
+    const { email, full_name, phone_number, address_line_1, city, zip_code } = req.body;
     const user_id = req.user.id;
+    const role = req.user.role;
 
     if (!email) {
         return res.status(400).json({ error: 'Email is required for update.' });
     }
 
+    const client = await pool.connect();
+    
     try {
+        await client.query('BEGIN');
+        
         // 1. Check if the new email already exists for another user
-        const emailCheck = await pool.query('SELECT id FROM users WHERE email = $1 AND id != $2', [email, user_id]);
+        const emailCheck = await client.query('SELECT id FROM users WHERE email = $1 AND id != $2', [email, user_id]);
         if (emailCheck.rows.length > 0) {
+            await client.query('ROLLBACK');
             return res.status(409).json({ error: 'Email already in use by another account.' });
         }
         
-        // 2. Update the user record
-        const result = await pool.query(
-            'UPDATE users SET email = $1 WHERE id = $2 RETURNING id, email, role, created_at',
+        // 2. Update the user email
+        await client.query(
+            'UPDATE users SET email = $1 WHERE id = $2',
             [email, user_id]
         );
         
-        // 3. Re-fetch and return the updated profile (optional, but clean)
+        // 3. Update customer profile if the user is a customer
+        if (role === 'customer') {
+            const updateCustomerQuery = `
+                INSERT INTO customer_profiles (user_id, full_name, phone_number, address_line_1, city, zip_code, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id) 
+                DO UPDATE SET 
+                    full_name = COALESCE($2, customer_profiles.full_name),
+                    phone_number = COALESCE($3, customer_profiles.phone_number),
+                    address_line_1 = COALESCE($4, customer_profiles.address_line_1),
+                    city = COALESCE($5, customer_profiles.city),
+                    zip_code = COALESCE($6, customer_profiles.zip_code),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE customer_profiles.user_id = $1;
+            `;
+            // NOTE: Using COALESCE allows the user to update fields individually without sending nulls for the others.
+            await client.query(updateCustomerQuery, [
+                user_id, 
+                full_name, 
+                phone_number, 
+                address_line_1, 
+                city, 
+                zip_code
+            ]);
+        }
+        
+        await client.query('COMMIT');
+        
         res.status(200).json({
             message: 'Profile updated successfully.',
-            user_profile: result.rows[0]
+            // Frontend will refetch profile via GET /user/profile to get all new data
         });
         
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error('User profile update error:', err);
         res.status(500).json({ error: 'An error occurred during profile update.' });
+    } finally {
+        client.release();
     }
 });
 
