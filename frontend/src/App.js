@@ -305,11 +305,16 @@ const Modal = ({ title, children, onClose }) => (
     </div>
 );
 
-const BookingModal = ({ provider, service, onClose, onBooked }) => {
+const BookingModal = ({ provider, service, onClose, onBooked, navigate }) => { // 3. ACCEPT navigate PROP
     const { token, user } = useAuth();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+
+    const handleBookingSuccess = () => {
+        onClose();
+        navigate('customerDashboard'); // 4. USE navigate FUNCTION
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -335,7 +340,7 @@ const BookingModal = ({ provider, service, onClose, onBooked }) => {
 
             if (response.ok) {
                 setSuccess(`Request sent! ID: ${data.booking_id}. Provider will review shortly.`);
-                setTimeout(() => onBooked(), 2000);
+                setTimeout(() => handleBookingSuccess(), 2000); // Call local success handler
             } else {
                 setError(data.error || 'Failed to send booking request.');
             }
@@ -413,6 +418,7 @@ const ReviewAndPaymentModal = ({ booking, onClose, onCompleted }) => {
             if (response.ok) {
                 setSuccess('Payment successful! You can now optionally leave a review.');
                 setPaymentStatus('success');
+                onCompleted(); // Refresh parent component to show new status
             } else {
                 setError(data.error || 'Payment failed.');
             }
@@ -444,7 +450,6 @@ const ReviewAndPaymentModal = ({ booking, onClose, onCompleted }) => {
             
             if (response.ok) {
                 setSuccess(data.message);
-                // Optionally close immediately, but refresh is handled by onCompleted
                 onCompleted(); 
             } else {
                 setError(data.error || 'Review submission failed.');
@@ -1032,7 +1037,7 @@ const ServiceProvidersPage = ({ service, setPage, setSelectedProvider }) => {
 };
 
 const ProviderDetailPage = ({ provider, service, setPage }) => {
-    const { isAuthenticated, user, setPage: navigate } = useAuth();
+    const { isAuthenticated, user } = useAuth(); // Removed navigate from here, using setPage directly
     const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
 
     // Mock data for Service name since provider doesn't contain it directly
@@ -1049,7 +1054,7 @@ const ProviderDetailPage = ({ provider, service, setPage }) => {
     const handleRequestService = () => {
         if (!isAuthenticated || user?.role !== 'customer') {
             console.log("[UI Notification] Please log in as a customer to request a service.");
-            navigate('login'); 
+            setPage('login'); // Use setPage directly for navigation
         } else {
             setIsBookingModalOpen(true);
         }
@@ -1057,7 +1062,7 @@ const ProviderDetailPage = ({ provider, service, setPage }) => {
     
     const handleBookingSuccess = () => {
         setIsBookingModalOpen(false);
-        navigate('customerDashboard');
+        setPage('customerDashboard'); // Use setPage directly for navigation
     };
     
     return (
@@ -1116,7 +1121,8 @@ const ProviderDetailPage = ({ provider, service, setPage }) => {
                     provider={provider} 
                     service={service} 
                     onClose={() => setIsBookingModalOpen(false)} 
-                    onBooked={handleBookingSuccess}
+                    onBooked={handleBookingSuccess} // Pass the navigation handler
+                    navigate={setPage} // 2. PASS setPage (which is the navigate function)
                 />
             )}
         </div>
@@ -2287,7 +2293,7 @@ export default function App() {
             case 'home': return <HomePage setPage={navigate} setSelectedService={setSelectedService} setSearchParams={setSearchParams} />;
             case 'allServices': return <AllServicesPage setPage={navigate} setSelectedService={setSelectedService} searchParams={searchParams} />;
             case 'serviceProviders': return <ServiceProvidersPage service={selectedService} setPage={navigate} setSelectedProvider={setSelectedProvider} />;
-            case 'providerDetail': return <ProviderDetailPage provider={selectedProvider} service={selectedService} setPage={navigate} />;
+            case 'providerDetail': return <ProviderDetailPage provider={selectedProvider} service={selectedService} setPage={navigate} />; // Passes navigate function
             case 'about': return <AboutPage />;
             case 'contact': return <ContactPage />;
             case 'login': return <LoginPage setPage={navigate} />;
