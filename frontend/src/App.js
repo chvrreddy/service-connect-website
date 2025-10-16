@@ -3,17 +3,9 @@ import React, { useState, useEffect, useCallback, createContext, useContext } fr
 // --- API Configuration ---
 const API_BASE_URL = 'http://localhost:3001/api/v1';
 
-// --- Asset Components ---
-
-const Logo = () => (
-    // Updated logo color to integrate better with the overall design
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="inline-block mr-2 text-white group-hover:text-blue-600 transition">
-        <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M2 12L12 17L22 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-);
-
+// --- UTILITY FUNCTIONS ---
+// Helper to safely read nested user profile data
+const getProfileField = (user, field, defaultValue = '') => user?.profile?.[field] || defaultValue;
 
 // --- AUTH CONTEXT ---
 
@@ -40,11 +32,10 @@ const AuthProvider = ({ children }) => {
             const response = await fetch(`${API_BASE_URL}/user/profile`, {
                 headers: { 'x-auth-token': authToken },
             });
-            // CRITICAL FIX: Ensure parsing JSON only if response is successful
             const data = await response.json();
             
             if (response.ok) {
-                // The backend now returns user and nested 'profile' data for customers
+                // The backend now returns user_profile which includes nested 'profile' data
                 setUser(data.user_profile);
             } else {
                 logout(); // Token is invalid or expired
@@ -101,7 +92,6 @@ const AuthProvider = ({ children }) => {
         }
     };
 
-    // --- Forgot Password Methods (Client-side implementation) ---
     const sendOtp = async (email) => {
         try {
             const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
@@ -170,16 +160,14 @@ const Header = ({ setPage }) => {
     };
 
     return (
-        // Header updated to match the image's dark cyan background
         <header className="bg-cyan-600 text-white shadow-lg sticky top-0 z-50">
             <nav className="container mx-auto px-6 py-4 flex justify-between items-center">
-                <div onClick={() => setPage('home')} className="cursor-pointer text-2xl font-extrabold flex items-center group">
-                    <svg className="inline-block mr-2 text-white w-6 h-6" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M3 12L12 3L21 12M7 10V21H17V10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    ServiceHub
+                {/* Home Text Link */}
+                <div onClick={() => setPage('home')} className="cursor-pointer text-2xl font-extrabold flex items-center group hover:text-cyan-200 transition">
+                    Service Connect
                 </div>
                 <div className="hidden md:flex items-center space-x-8">
+                    <a onClick={() => setPage('home')} className="hover:text-blue-200 font-medium cursor-pointer transition duration-150">Home</a>
                     <a onClick={() => setPage('allServices')} className="hover:text-blue-200 font-medium cursor-pointer transition duration-150">Services</a>
                     <a onClick={() => setPage('about')} className="hover:text-blue-200 font-medium cursor-pointer transition duration-150">About</a>
                     <a onClick={() => setPage('contact')} className="hover:text-blue-200 font-medium cursor-pointer transition duration-150">Contact</a>
@@ -205,7 +193,6 @@ const Header = ({ setPage }) => {
 
 
 const Footer = ({ setPage }) => (
-    // Footer structure updated to match the image's alignment and sections
     <footer className="bg-slate-900 text-white mt-16">
         <div className="container mx-auto px-6 py-10">
             <div className="grid grid-cols-2 md:grid-cols-5 gap-8 border-b border-gray-700 pb-8">
@@ -246,7 +233,7 @@ const Footer = ({ setPage }) => (
                 </div>
             </div>
             <div className="mt-6 text-center text-gray-500 text-sm">
-                &copy; {new Date().getFullYear()} ServiceHub. All rights reserved.
+                &copy; {new Date().getFullYear()} Service Connect. All rights reserved.
             </div>
         </div>
     </footer>
@@ -254,21 +241,18 @@ const Footer = ({ setPage }) => (
 
 
 const ServiceCard = ({ service, onClick }) => (
-    // Simplified card style matching the image's small, iconic boxes
     <div
         onClick={() => onClick(service)}
         className="bg-white p-4 rounded-xl shadow-md hover:shadow-lg transform hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col items-center text-center border border-gray-200 group"
     >
         <div className="text-3xl mb-2 p-2 bg-blue-50 rounded-full text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-all duration-300">{service.icon || '⚡'}</div>
-        <h3 className="text-md font-bold text-slate-800 mb-1 group-hover:text-blue-600">{service.name.split(' ')[0]}</h3>
-        {/* Added placeholder for a second line of text, if available */}
-        <p className="text-gray-500 text-xs line-clamp-1">{service.id_name || service.description.split(' ')[1] || 'Service'}</p>
+        <h3 className="text-md font-bold text-slate-800 mb-1 group-hover:text-blue-600">{service.name}</h3>
+        <p className="text-gray-500 text-xs line-clamp-1">{service.description || 'Professional Service'}</p>
     </div>
 );
 
 
 const ProviderCard = ({ provider, onClick }) => (
-    // Refined provider card emphasizing verification and rating
     <div onClick={() => onClick(provider)} className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300 cursor-pointer flex flex-col p-4 space-y-3 border border-gray-200 min-w-[280px]">
         
         <div className="flex items-center space-x-3">
@@ -278,14 +262,14 @@ const ProviderCard = ({ provider, onClick }) => (
                     <h3 className="text-lg font-bold text-slate-800">{provider.display_name}</h3>
                     {provider.is_verified && <span title="Verified Professional" className="bg-blue-100 text-blue-800 text-xs font-semibold px-1 py-0.5 rounded-full border border-blue-300">✓</span>}
                 </div>
-                <p className="text-xs font-semibold text-gray-500">{provider.service_name || 'Master Plumber'}</p>
+                <p className="text-xs font-semibold text-gray-500">{provider.service_name || 'Service Expert'}</p>
             </div>
         </div>
 
         <div className="flex justify-between items-center border-t pt-3">
             <div className="flex items-center text-sm">
-                <span className="text-amber-500 mr-1 text-lg font-extrabold">{parseFloat(provider.average_rating || 4.9).toFixed(1)}/5</span>
-                <span className="ml-2 text-gray-500 text-xs">({provider.review_count || 150} reviews)</span>
+                <span className="text-amber-500 mr-1 text-lg font-extrabold">{parseFloat(provider.average_rating || 0).toFixed(1)}/5</span>
+                <span className="ml-2 text-gray-500 text-xs">({provider.review_count || 0} reviews)</span>
             </div>
             <button className="bg-blue-600 text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-blue-700 transition">
                 View Profile
@@ -298,7 +282,6 @@ const Spinner = () => <div className="flex justify-center items-center h-64"><di
 const ErrorMessage = ({ message }) => <div className="text-center text-red-700 bg-red-100 p-4 rounded-lg my-4 font-medium border border-red-300">{message}</div>;
 const SuccessMessage = ({ message }) => <div className="text-center text-green-700 bg-green-100 p-4 rounded-lg my-4 font-medium border border-green-300">{message}</div>;
 
-// Helper function for the How It Works section
 const HowItWorksCard = ({ icon, title, description, stars }) => (
     <div className="flex flex-col items-center text-center bg-white p-6 rounded-xl shadow-lg border border-gray-100 w-full">
         <div className="text-4xl text-blue-600 mb-3">{icon}</div>
@@ -308,15 +291,381 @@ const HowItWorksCard = ({ icon, title, description, stars }) => (
     </div>
 );
 
-const BookingCard = ({ booking, handleAction, isCustomer }) => {
+// --- MODAL COMPONENTS ---
+
+const Modal = ({ title, children, onClose }) => (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]">
+        <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 m-4 relative">
+            <h2 className="text-2xl font-bold text-slate-800 mb-4 border-b pb-2">{title}</h2>
+            <button onClick={onClose} className="absolute top-4 right-4 text-gray-500 hover:text-gray-800 text-xl font-bold transition">
+                &times;
+            </button>
+            {children}
+        </div>
+    </div>
+);
+
+const BookingModal = ({ provider, service, onClose, onBooked }) => {
+    const { token, user } = useAuth();
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        
+        const bookingData = {
+            provider_id: provider.id,
+            service_id: service.id,
+            scheduled_at: e.target.scheduled_at.value,
+            address: e.target.address.value,
+            customer_notes: e.target.customer_notes.value,
+            service_description: e.target.service_description.value, // New field
+        };
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/bookings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                body: JSON.stringify(bookingData),
+            });
+            const data = await response.json();
+
+            if (response.ok) {
+                setSuccess(`Request sent! ID: ${data.booking_id}. Provider will review shortly.`);
+                setTimeout(() => onBooked(), 2000);
+            } else {
+                setError(data.error || 'Failed to send booking request.');
+            }
+        } catch (err) {
+            setError('Network error occurred during booking.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (!user) return <ErrorMessage message="You must be logged in to book a service." />;
+
+    // Use default location from user profile
+    const defaultLat = getProfileField(user, 'location_lat', 'N/A');
+    const defaultLon = getProfileField(user, 'location_lon', 'N/A');
+    const defaultAddress = getProfileField(user, 'address_line_1', '');
+    const defaultCity = getProfileField(user, 'city', '');
+    const fullAddress = defaultAddress + (defaultCity ? `, ${defaultCity}` : '');
+
+    return (
+        <Modal title={`Book ${service.name} with ${provider.display_name}`} onClose={onClose}>
+            {error && <ErrorMessage message={error} />}
+            {success && <SuccessMessage message={success} />}
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <p className="text-sm text-gray-600">**Important:** Your default location is set to ({defaultLat}, {defaultLon}). Update it in your dashboard if needed.</p>
+                <div>
+                    <label htmlFor="scheduled_at" className="block text-sm font-semibold text-gray-700">Scheduled Date & Time</label>
+                    <input id="scheduled_at" name="scheduled_at" type="datetime-local" required className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" />
+                </div>
+                <div>
+                    <label htmlFor="address" className="block text-sm font-semibold text-gray-700">Service Address</label>
+                    <input id="address" name="address" type="text" defaultValue={fullAddress} required className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" />
+                </div>
+                 <div>
+                    <label htmlFor="service_description" className="block text-sm font-semibold text-gray-700">Detailed Service Description (What do you need done?)</label>
+                    <textarea id="service_description" name="service_description" rows="3" required className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="e.g., Leaking faucet in the kitchen sink. Requires immediate attention."></textarea>
+                </div>
+                <div>
+                    <label htmlFor="customer_notes" className="block text-sm font-semibold text-gray-700">Additional Notes (Optional)</label>
+                    <textarea id="customer_notes" name="customer_notes" rows="2" className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
+                </div>
+                <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400">
+                    {loading ? 'Sending Request...' : 'Confirm & Send Request'}
+                </button>
+            </form>
+        </Modal>
+    );
+};
+
+const ReviewAndPaymentModal = ({ booking, onClose, onCompleted }) => {
+    const { token } = useAuth();
+    const [rating, setRating] = useState(5);
+    const [comment, setComment] = useState('');
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [paymentStatus, setPaymentStatus] = useState(booking.booking_status === 'closed' ? 'success' : 'pending'); 
+
+    const handlePayment = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+
+        const mockAmount = 500; // Mock payment amount
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/payments`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                // Mocking payment token
+                body: JSON.stringify({ booking_id: booking.id, amount: mockAmount, payment_token: 'MOCK_TOKEN_XYZ' }),
+            });
+            const data = await response.json();
+
+            if (response.ok) {
+                setSuccess('Payment successful! You can now optionally leave a review.');
+                setPaymentStatus('success');
+            } else {
+                setError(data.error || 'Payment failed.');
+            }
+        } catch (err) {
+            setError('Network error during payment processing.');
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    const handleReviewSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+
+        if (paymentStatus !== 'success') {
+            setError('Please complete the payment first before submitting a review.');
+            setLoading(false);
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/reviews`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                body: JSON.stringify({ booking_id: booking.id, rating: rating, comment: comment }),
+            });
+            const data = await response.json();
+            
+            if (response.ok) {
+                setSuccess(data.message);
+                // Optionally close immediately, but refresh is handled by onCompleted
+                onCompleted(); 
+            } else {
+                setError(data.error || 'Review submission failed.');
+            }
+        } catch (err) {
+            setError('Network error during review submission.');
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    // Star rating component for re-use
+    const StarRating = () => (
+        <div className="flex justify-center space-x-1">
+            {[1, 2, 3, 4, 5].map((star) => (
+                <span 
+                    key={star} 
+                    onClick={() => setRating(star)}
+                    className={`cursor-pointer text-3xl transition ${star <= rating ? 'text-amber-400' : 'text-gray-300 hover:text-amber-300'}`}
+                >
+                    ⭐
+                </span>
+            ))}
+        </div>
+    );
+    
+    const isPaymentPending = booking.booking_status === 'completed' && paymentStatus !== 'success';
+    const isReadyToReview = paymentStatus === 'success';
+
+    return (
+        <Modal title={`Payment & Review for Booking #${booking.id}`} onClose={onClose}>
+            {error && <ErrorMessage message={error} />}
+            {success && <SuccessMessage message={success} />}
+
+            {/* --- Payment Section (Only visible if not yet paid) --- */}
+            {isPaymentPending && (
+                <div className="bg-red-50 p-4 rounded-lg mb-4 border border-red-200">
+                    <h3 className="text-xl font-bold text-red-700 mb-3">1. Complete Payment (Required)</h3>
+                    <p className="mb-3 text-gray-700">Service Fee: **₹500.00**</p>
+                    <button onClick={handlePayment} disabled={loading} className="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition disabled:bg-gray-400">
+                        {loading ? 'Processing...' : 'Pay ₹500.00 Now'}
+                    </button>
+                </div>
+            )}
+            
+            {/* --- Review Section (Only visible after successful payment) --- */}
+            {isReadyToReview && (
+                <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                    <h3 className="text-xl font-bold text-amber-700 mb-3">2. Optional Review</h3>
+                    <form onSubmit={handleReviewSubmit} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2 text-center">Your Rating</label>
+                            <StarRating />
+                            <p className="text-center text-sm text-gray-500 mt-1">({rating} out of 5)</p>
+                        </div>
+                        <div>
+                            <label htmlFor="comment" className="block text-sm font-semibold text-gray-700">Comment (Optional)</label>
+                            <textarea id="comment" name="comment" rows="3" value={comment} onChange={(e) => setComment(e.target.value)} className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="Share your experience..."></textarea>
+                        </div>
+                        <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400">
+                            {loading ? 'Submitting...' : 'Submit Review'}
+                        </button>
+                    </form>
+                </div>
+            )}
+            
+            <div className="mt-4 text-right">
+                <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700 font-medium">Close</button>
+            </div>
+
+        </Modal>
+    );
+};
+
+const ChatComponent = ({ booking, onClose, isCustomer }) => {
+    const { token, user } = useAuth();
+    const [messages, setMessages] = useState([]);
+    const [newMessage, setNewMessage] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    
+    // Scroll ref for chat window
+    const messagesEndRef = React.useRef(null);
+    
+    const fetchMessages = useCallback(async () => {
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch(`${API_BASE_URL}/bookings/${booking.id}/messages`, { 
+                headers: { 'x-auth-token': token },
+            });
+            const data = await res.json();
+            
+            if (res.ok) {
+                setMessages(data.messages || []);
+            } else {
+                setError(data.error || 'Failed to load chat history.');
+            }
+        } catch (err) {
+            setError('Network error occurred during chat loading.');
+        } finally {
+            setLoading(false);
+        }
+    }, [booking.id, token]);
+
+    useEffect(() => {
+        fetchMessages();
+        
+        // Mock Real-Time Polling (Replace with WebSockets/Socket.io in production)
+        const interval = setInterval(fetchMessages, 5000); 
+        return () => clearInterval(interval);
+        
+    }, [fetchMessages]);
+    
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages]);
+
+    const handleSendMessage = async (e) => {
+        e.preventDefault();
+        if (!newMessage.trim() || !token) return;
+        
+        const content = newMessage.trim();
+        setNewMessage('');
+        
+        // Add optimistic update (mock message)
+        setMessages(prev => [...prev, { 
+            id: Date.now(), 
+            sender_id: user.id, 
+            sender_email: user.email,
+            content: content, 
+            created_at: new Date().toISOString() 
+        }]);
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/bookings/${booking.id}/messages`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                body: JSON.stringify({ content }),
+            });
+
+            if (!response.ok) {
+                console.error('Failed to send message:', await response.json());
+                setError('Failed to send message.');
+            } else {
+                // Fetch actual messages to ensure data integrity
+                fetchMessages();
+            }
+        } catch (err) {
+            console.error('Network error during send:', err);
+            setError('Network error occurred while sending message.');
+        }
+    };
+    
+    const chatTitle = isCustomer 
+        ? `Chat with ${booking.provider_name}`
+        : `Chat with Customer (${booking.customer_email})`;
+        
+    const isChatActive = booking.booking_status === 'accepted';
+
+    return (
+        <Modal title={chatTitle} onClose={onClose}>
+            {error && <ErrorMessage message={error} />}
+            <div className="h-96 flex flex-col border border-gray-200 rounded-lg overflow-hidden">
+                {/* Messages Window */}
+                <div className="flex-grow p-4 overflow-y-auto bg-gray-50 space-y-3">
+                    {loading ? (
+                        <Spinner />
+                    ) : messages.length === 0 ? (
+                        <p className="text-center text-gray-500 pt-10">Start a conversation!</p>
+                    ) : (
+                        messages.map((msg, index) => {
+                            const isSender = msg.sender_id === user.id;
+                            return (
+                                <div key={index} className={`flex ${isSender ? 'justify-end' : 'justify-start'}`}>
+                                    <div className={`max-w-xs md:max-w-md px-4 py-2 rounded-xl shadow-md ${isSender ? 'bg-blue-600 text-white rounded-br-none' : 'bg-gray-200 text-slate-800 rounded-tl-none'}`}>
+                                        <p className="text-xs font-semibold mb-1 opacity-75">{isSender ? 'You' : msg.sender_email}</p>
+                                        <p className="text-sm">{msg.content}</p>
+                                        <span className="text-xs block mt-1 text-right opacity-75">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
+                    <div ref={messagesEndRef} />
+                </div>
+                
+                {/* Input Area */}
+                <form onSubmit={handleSendMessage} className="p-4 bg-white border-t flex space-x-3">
+                    <input 
+                        type="text"
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        placeholder={isChatActive ? "Type your message..." : "Chat is disabled until accepted"}
+                        className="flex-grow px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                        disabled={!isChatActive}
+                    />
+                    <button 
+                        type="submit" 
+                        className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700 transition disabled:bg-gray-400"
+                        disabled={!newMessage.trim() || !isChatActive}
+                    >
+                        Send
+                    </button>
+                </form>
+            </div>
+            {!isChatActive && <p className="text-center text-sm text-red-500 mt-2">Chat is only active when the booking status is 'accepted'.</p>}
+        </Modal>
+    );
+};
+
+
+const BookingCard = ({ booking, handleAction, isCustomer, onReviewModalOpen, onChatModalOpen }) => {
     // Helper to determine color based on status
     const getStatusClasses = (status) => {
         switch (status) {
             case 'pending_provider': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
             case 'accepted': return 'bg-blue-100 text-blue-800 border-blue-300';
-            case 'completed': return 'bg-green-100 text-green-800 border-green-300';
-            case 'closed': return 'bg-gray-200 text-gray-700 border-gray-400';
-            case 'rejected': return 'bg-red-100 text-red-800 border-red-300';
+            case 'completed': return 'bg-red-100 text-red-800 border-red-300'; // Completed/Unpaid
+            case 'closed': return 'bg-green-100 text-green-800 border-green-300'; // Paid/Closed
+            case 'rejected': return 'bg-gray-200 text-gray-700 border-gray-400';
             default: return 'bg-gray-100 text-gray-600 border-gray-300';
         }
     };
@@ -324,25 +673,44 @@ const BookingCard = ({ booking, handleAction, isCustomer }) => {
     // Determine title based on role
     const title = isCustomer 
         ? `Provider: ${booking.provider_name || 'N/A'}`
-        : `Service: ${booking.service_name || 'N/A'}`;
+        : `Customer: ${booking.customer_email || 'N/A'}`;
         
     const secondaryInfo = isCustomer 
         ? `Service: ${booking.service_name || 'N/A'}`
-        : `Customer: ${booking.customer_email || 'N/A'}`;
+        : `Service: ${booking.service_name || 'N/A'}`;
     
-    const actions = isCustomer ? (
-        <button 
-            className={`bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-600 transition shadow-md ${
-                booking.booking_status === 'completed' ? '' : 'hidden'
-            }`}
-            onClick={() => console.log('Open Review/Payment Modal')}
-        >
-            Pay & Review
-        </button>
-    ) : (
-        <>
-            {booking.booking_status === 'pending_provider' && (
-                <div className="flex mt-4 md:mt-0 space-x-3">
+    // Customer Actions
+    const customerActions = (
+        <div className="flex flex-col space-y-3">
+            {/* Review & Payment button (Active when completed/unpaid) */}
+            <button 
+                className={`text-white px-4 py-2 rounded-lg font-semibold transition shadow-md ${
+                    booking.booking_status === 'completed' 
+                    ? 'bg-red-500 hover:bg-red-600'
+                    : 'hidden'
+                }`}
+                onClick={() => onReviewModalOpen(booking)}
+            >
+                Pay & Review
+            </button>
+            
+            {/* Chat button (Active when accepted or closed) */}
+            {(booking.booking_status === 'accepted' || booking.booking_status === 'closed') && (
+                 <button 
+                    className="bg-cyan-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-cyan-700 transition shadow-md"
+                    onClick={() => onChatModalOpen(booking)}
+                >
+                    Chat Now
+                </button>
+            )}
+        </div>
+    );
+    
+    // Provider Actions
+    const providerActions = (
+        <div className="flex flex-col space-y-3">
+             {booking.booking_status === 'pending_provider' && (
+                <div className="flex space-x-3">
                     <button 
                         onClick={() => handleAction(booking.id, 'accepted')} 
                         className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 transition shadow-md"
@@ -359,16 +727,22 @@ const BookingCard = ({ booking, handleAction, isCustomer }) => {
             )}
             
             {booking.booking_status === 'accepted' && (
-                 <div className="mt-4 md:mt-0">
+                 <div className="space-y-3">
                     <button 
                         onClick={() => handleAction(booking.id, 'completed')} 
-                        className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 transition shadow-md"
+                        className="bg-red-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-700 transition shadow-md"
                     >
                         Mark Completed
                     </button>
+                    <button 
+                        className="bg-cyan-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-cyan-700 transition shadow-md"
+                        onClick={() => onChatModalOpen(booking)}
+                    >
+                        Chat Now
+                    </button>
                  </div>
             )}
-        </>
+        </div>
     );
 
     
@@ -395,20 +769,23 @@ const BookingCard = ({ booking, handleAction, isCustomer }) => {
             </div>
             
             <div className="mt-4 md:mt-0">
-                {actions}
+                {isCustomer ? customerActions : providerActions}
             </div>
         </div>
     );
 };
 
+
 // --- PAGE COMPONENTS ---
 
-const HomePage = ({ setPage, setSelectedService }) => {
+const HomePage = ({ setPage, setSelectedService, setSearchParams }) => {
     const [services, setServices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [searchLocation, setSearchLocation] = useState('Your Location'); 
-    const [searchQuery, setSearchQuery] = useState('What service are you looking for?');
+    
+    // Updated to use placeholder text
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchLocation, setSearchLocation] = useState('');
 
     useEffect(() => {
         const fetchServices = async () => {
@@ -431,19 +808,29 @@ const HomePage = ({ setPage, setSelectedService }) => {
         setPage('serviceProviders');
     };
     
-    // --- Hero Section Overhaul ---
+    // Handle Search Submission (making it functional)
+    const handleSearch = () => {
+        // Simple validation/data extraction
+        const [lat, lon] = searchLocation.split(',').map(s => s.trim());
+        
+        setSearchParams({ 
+            query: searchQuery, 
+            lat: parseFloat(lat) || null,
+            lon: parseFloat(lon) || null,
+        });
+        setPage('allServices');
+    };
+
     return (
         <main>
-            {/* HERO SECTION - Matching the Image's Header Color and Image Overlay */}
+            {/* HERO SECTION - Service Connect Style */}
             <section className="bg-cyan-600 pt-0 pb-40 relative overflow-hidden">
                 <div className="container mx-auto px-6 relative z-10">
                     
-                    {/* Placeholder for the background group of professionals */}
                     <div className="absolute inset-x-0 bottom-0 h-[450px] opacity-90 overflow-hidden">
                         <img 
-                            // Using a placeholder that suggests people behind the text
                             src="https://placehold.co/1200x500/06B6D4/FFFFFF?text=Trusted+Experts+Team+Graphic" 
-                            alt="Service professionals background"
+                            alt="Service Connect professionals background"
                             className="w-full h-full object-cover object-top"
                         />
                     </div>
@@ -453,7 +840,7 @@ const HomePage = ({ setPage, setSelectedService }) => {
                             Your trusted experts at your doorstep
                         </h1>
                         
-                        {/* Search Bar Block - Matching Image Style */}
+                        {/* Search Bar Block - Functional placeholders */}
                         <div className="bg-white p-2 rounded-xl shadow-2xl flex flex-col md:flex-row items-center space-y-2 md:space-y-0 md:space-x-2 max-w-4xl">
                             {/* What service */}
                             <input 
@@ -468,14 +855,14 @@ const HomePage = ({ setPage, setSelectedService }) => {
                                 <span className="absolute left-3 text-gray-400">📍</span>
                                 <input 
                                     type="text" 
-                                    placeholder="Your Location" 
+                                    placeholder="Your Location (e.g., Lat, Lon)" 
                                     value={searchLocation}
                                     onChange={(e) => setSearchLocation(e.target.value)}
                                     className="pl-8 p-3 w-full focus:outline-none rounded-lg text-lg border-r border-gray-200 md:border-r-0" 
                                 />
                             </div>
                             {/* Search Button */}
-                            <button onClick={() => setPage('allServices')} className="bg-teal-500 text-white font-bold px-8 py-3 rounded-xl hover:bg-teal-600 transition w-full md:w-auto text-lg shadow-md">
+                            <button onClick={handleSearch} className="bg-teal-500 text-white font-bold px-8 py-3 rounded-xl hover:bg-teal-600 transition w-full md:w-auto text-lg shadow-md">
                                 Search
                             </button>
                         </div>
@@ -491,20 +878,10 @@ const HomePage = ({ setPage, setSelectedService }) => {
                     {loading && <Spinner />}
                     {error && <ErrorMessage message={error} />}
                     
-                    {/* Service Cards Grid - Adjusted to 6 columns for the image layout */}
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
                         {(services || []).slice(0, 6).map((service, index) => (
                             <ServiceCard key={service.id} service={{...service, icon: index === 0 ? '🔧' : index === 1 ? '💡' : index === 2 ? '🔨' : '🛠️'}} onClick={handleServiceClick} />
                         ))}
-                    </div>
-
-                    {/* Top-Rated Professionals Section */}
-                    <h2 className="text-2xl font-extrabold text-slate-800 mb-8 mt-16">Top-Rated Professionals</h2>
-                    <div className="flex space-x-6 overflow-x-auto pb-4">
-                        {/* Mock Provider Cards (using the ProviderCard component) */}
-                        <ProviderCard provider={{display_name: 'Rajesh K.', is_verified: true, average_rating: '4.9', review_count: 150, bio: 'Master Plumber and pipe expert.', provider_id: 99}} onClick={() => setPage('providerDetail')} />
-                        <ProviderCard provider={{display_name: 'Sunita D.', is_verified: true, average_rating: '4.9', review_count: 120, bio: 'Expert AC and Refrigerator repair technician.', provider_id: 98}} onClick={() => setPage('providerDetail')} />
-                         <ProviderCard provider={{display_name: 'Ramesh V.', is_verified: false, average_rating: '4.5', review_count: 80, bio: 'Dedicated house cleaning specialist.', provider_id: 97}} onClick={() => setPage('providerDetail')} />
                     </div>
 
                     {/* How It Works Section - Matching Image Style */}
@@ -527,14 +904,6 @@ const HomePage = ({ setPage, setSelectedService }) => {
                             stars="⭐⭐⭐⭐⭐"
                         />
                     </div>
-                    
-                    {/* Testimonials Placeholder */}
-                    <div className="mt-16 text-center text-gray-700">
-                        <h2 className="text-2xl font-extrabold text-slate-800 mb-8">What Our Customers Say</h2>
-                        <div className="max-w-2xl mx-auto p-6 bg-white rounded-xl shadow-lg border-l-4 border-blue-600 italic text-lg">
-                             "Service Connect made finding an electrician so easy and trustworthy. The quality of work was exceptional." - Priya S.
-                        </div>
-                    </div>
 
                 </div>
             </section>
@@ -543,7 +912,7 @@ const HomePage = ({ setPage, setSelectedService }) => {
 };
 
 
-const AllServicesPage = ({ setPage, setSelectedService }) => {
+const AllServicesPage = ({ setPage, setSelectedService, searchParams }) => {
     const [services, setServices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -553,7 +922,14 @@ const AllServicesPage = ({ setPage, setSelectedService }) => {
             try {
                 const res = await fetch(`${API_BASE_URL}/services`);
                 if (!res.ok) throw new Error('Failed to fetch services. Is the backend running?');
-                const data = await res.json();
+                let data = await res.json();
+                
+                // Mock filtering by query (since backend only filters by service ID)
+                if (searchParams?.query) {
+                    const query = searchParams.query.toLowerCase();
+                    data = data.filter(s => s.name.toLowerCase().includes(query) || s.description.toLowerCase().includes(query));
+                }
+                
                 setServices(data || []);
             } catch (err) {
                 setError(err.message || 'Failed to load services.');
@@ -562,7 +938,7 @@ const AllServicesPage = ({ setPage, setSelectedService }) => {
             }
         };
         fetchServices();
-    }, []);
+    }, [searchParams]);
 
     const handleServiceClick = (service) => {
         setSelectedService(service);
@@ -571,7 +947,10 @@ const AllServicesPage = ({ setPage, setSelectedService }) => {
     
     return (
         <div className="container mx-auto px-6 py-16">
-            <h1 className="text-4xl font-bold text-slate-800 mb-10 text-center border-b pb-4">All Available Services</h1>
+            <h1 className="text-4xl font-bold text-slate-800 mb-4 text-center border-b pb-4">All Available Services</h1>
+             {searchParams?.query && (
+                 <p className="text-center text-lg text-gray-600 mb-8">Showing results for: **"{searchParams.query}"**</p>
+             )}
             {loading && <Spinner />}
             {error && <ErrorMessage message={error} />}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 mt-6">
@@ -583,12 +962,18 @@ const AllServicesPage = ({ setPage, setSelectedService }) => {
     );
 };
 
-//here i changed 
 
 const ServiceProvidersPage = ({ service, setPage, setSelectedProvider }) => {
+    const { user, isAuthenticated } = useAuth();
     const [providers, setProviders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    
+    // Get customer default location from profile
+    const lat = isAuthenticated ? getProfileField(user, 'location_lat', null) : null;
+    const lon = isAuthenticated ? getProfileField(user, 'location_lon', null) : null;
+    
+    const locationMessage = lat && lon ? `Searching within your default location: (${lat}, ${lon})` : 'Using mock location (0, 0). Please update your profile.';
 
     useEffect(() => {
         if (!service || !service.id) {
@@ -599,10 +984,11 @@ const ServiceProvidersPage = ({ service, setPage, setSelectedProvider }) => {
         }
 
         const fetchProviders = async () => {
-            // Hardcoded lat/lon for initial search
-            const lat = 12.9716, lon = 77.5946; 
+            const searchLat = lat || 0; 
+            const searchLon = lon || 0; 
+            
             try {
-                const res = await fetch(`${API_BASE_URL}/providers?service_id=${service.id}&lat=${lat}&lon=${lon}`);
+                const res = await fetch(`${API_BASE_URL}/providers?service_id=${service.id}&lat=${searchLat}&lon=${searchLon}`);
                 if (!res.ok) throw new Error('Failed to fetch providers');
                 const data = await res.json();
                 setProviders(data.providers || []);
@@ -613,7 +999,7 @@ const ServiceProvidersPage = ({ service, setPage, setSelectedProvider }) => {
             }
         };
         fetchProviders();
-    }, [service, setPage]);
+    }, [service, setPage, lat, lon, isAuthenticated]);
 
 
     const handleProviderClick = (provider) => {
@@ -625,25 +1011,15 @@ const ServiceProvidersPage = ({ service, setPage, setSelectedProvider }) => {
         <div className="container mx-auto px-6 py-16">
             <button onClick={() => setPage('allServices')} className="text-blue-600 hover:text-blue-800 font-medium transition mb-8 flex items-center">&larr; Back to all services</button>
             <h1 className="text-4xl font-extrabold text-slate-800 mb-2">{service?.name || "Service Providers"}</h1>
-            <p className="text-lg text-gray-600 mb-8 max-w-3xl">{service?.description}</p>
-            
-            {/* Filter Bar Placeholder - Styled for professional look */}
-            <div className="bg-white p-4 rounded-xl shadow-inner mb-8 flex flex-wrap gap-4 items-center border border-gray-200">
-                <span className="font-semibold text-slate-700">Filter & Sort:</span>
-                <select className="p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500">
-                    <option>Sort by Rating</option>
-                    <option>Sort by Distance</option>
-                </select>
-                <input type="number" placeholder="Max Radius (km)" className="p-3 border border-gray-300 rounded-lg shadow-sm w-40" />
-                <button className="bg-blue-600 text-white px-4 py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition">Apply</button>
-            </div>
+            <p className="text-lg text-gray-600 mb-4 max-w-3xl">{service?.description}</p>
+            <p className="text-sm text-blue-500 font-medium mb-8">{locationMessage}</p>
             
             {loading && <Spinner />}
             {error && <ErrorMessage message={error} />}
             <div className="space-y-6">
                 {!loading && providers.length > 0 ? (
                     providers.map(provider => (
-                        <ProviderCard key={provider.provider_id} provider={provider} onClick={handleProviderClick} />
+                        <ProviderCard key={provider.id} provider={provider} onClick={handleProviderClick} />
                     ))
                 ) : (
                     !loading && !error && <p className="text-center text-gray-500 bg-gray-100 p-10 rounded-xl shadow-inner">
@@ -655,17 +1031,15 @@ const ServiceProvidersPage = ({ service, setPage, setSelectedProvider }) => {
     );
 };
 
-const ProviderDetailPage = ({ provider, setPage }) => {
-// ... (rest of ProviderDetailPage component remains the same)
-// ...
-// ...
-    const { isAuthenticated, setPage: navigate } = useAuth();
-    // ALERT FIX: Changed alert() to a simple console log for development purposes, as alerts break iframes.
-    const alert = (message) => console.log(`[UI Notification] ${message}`);
-    
+const ProviderDetailPage = ({ provider, service, setPage }) => {
+    const { isAuthenticated, user, setPage: navigate } = useAuth();
+    const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
+
+    // Mock data for Service name since provider doesn't contain it directly
+    const mockServiceName = service?.name || 'Service Professional';
+
     if (!provider) return <ErrorMessage message="No provider selected." />;
     
-    // Mock Data for Detail Page
     const portfolio = [
         "https://placehold.co/400x300/F0F4FF/4338CA?text=Portfolio+Image+1",
         "https://placehold.co/400x300/E0E7FF/4338CA?text=Portfolio+Image+2",
@@ -673,13 +1047,17 @@ const ProviderDetailPage = ({ provider, setPage }) => {
     ];
 
     const handleRequestService = () => {
-        if (!isAuthenticated) {
-            alert("Please log in or register to request a service.");
+        if (!isAuthenticated || user?.role !== 'customer') {
+            console.log("[UI Notification] Please log in as a customer to request a service.");
             navigate('login'); 
         } else {
-            // Placeholder for the actual booking modal
-            alert(`Ready to book ${provider.display_name}. (Booking modal coming soon!)`);
+            setIsBookingModalOpen(true);
         }
+    };
+    
+    const handleBookingSuccess = () => {
+        setIsBookingModalOpen(false);
+        navigate('customerDashboard');
     };
     
     return (
@@ -697,7 +1075,7 @@ const ProviderDetailPage = ({ provider, setPage }) => {
                         />
                         <div>
                             <h1 className="text-3xl font-extrabold text-slate-800">{provider.display_name}</h1>
-                            <p className="text-lg text-blue-600 font-semibold mb-2">{provider.service_name || 'Service Professional'}</p>
+                            <p className="text-lg text-blue-600 font-semibold mb-2">{mockServiceName}</p>
                             <div className="flex items-center space-x-2">
                                 <span className="bg-amber-100 text-amber-600 text-sm font-bold px-3 py-1 rounded-full flex items-center">
                                     <span className="text-lg mr-1">⭐</span>{parseFloat(provider.average_rating || 0).toFixed(1)}
@@ -712,6 +1090,7 @@ const ProviderDetailPage = ({ provider, setPage }) => {
                     <button 
                         onClick={handleRequestService}
                         className="mt-6 lg:mt-0 bg-blue-600 text-white text-lg font-bold px-8 py-3 rounded-lg hover:bg-blue-700 transition shadow-lg"
+                        disabled={user?.role === 'provider' || user?.role === 'admin'}
                     >
                         Request Service
                     </button>
@@ -725,54 +1104,27 @@ const ProviderDetailPage = ({ provider, setPage }) => {
                         
                         <h3 className="text-xl font-bold text-slate-700 mb-3">Service Details</h3>
                         <ul className="list-disc list-inside text-gray-700 space-y-2">
-                            <li><span className="font-semibold">Primary Service:</span> {provider.service_name || 'N/A'}</li>
-                            <li><span className="font-semibold">Service Area:</span> {provider.service_radius_km || 10} km radius</li>
+                            <li><span className="font-semibold">Primary Service:</span> {mockServiceName}</li>
+                            <li><span className="font-semibold">Service Area:</span> {provider.service_radius_km || 10} km radius from location ({provider.location_lat}, {provider.location_lon})</li>
                             <li><span className="font-semibold">Avg Rate:</span> $40/hr (Estimated)</li>
-                            <li><span className="font-semibold">Next Available:</span> Today at 4:00 PM</li>
                         </ul>
                     </div>
-                    
-                    <div className="bg-blue-50 p-6 rounded-xl border border-blue-200">
-                        <h3 className="text-xl font-bold text-blue-700 mb-4">Contact Info</h3>
-                        <p className="text-gray-700">Location: {provider.location_lat}, {provider.location_lon} (Mock)</p>
-                        <p className="text-gray-700 mt-2">Contact: Available after booking</p>
-                        <p className="text-sm text-gray-500 mt-4">For privacy and security, direct contact details are shared only after a booking is confirmed.</p>
-                    </div>
                 </div>
-                
-                {/* Portfolio Section */}
-                <h2 className="text-2xl font-bold text-slate-700 mb-4 border-b pb-2">Portfolio & Work</h2>
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {portfolio.map((img, index) => (
-                        <img key={index} src={img} alt={`Work ${index + 1}`} className="rounded-lg shadow-md w-full h-48 object-cover"/>
-                    ))}
-                </div>
-
-                {/* Reviews Section */}
-                <h2 className="text-2xl font-bold text-slate-700 mt-10 mb-6 border-b pb-2">Customer Reviews</h2>
-                <div className="space-y-4">
-                    <div className="bg-gray-50 p-4 rounded-lg border">
-                        <div className="font-semibold">Customer A <span className="text-amber-500 ml-2">⭐⭐⭐⭐⭐</span></div>
-                        <p className="text-gray-700 text-sm mt-1">"Rajesh was punctual, professional, and solved my electrical issue quickly. Highly recommend!"</p>
-                        <span className="text-xs text-gray-500 mt-1 block">Date: 2025-09-28</span>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-lg border">
-                        <div className="font-semibold">Customer B <span className="text-amber-500 ml-2">⭐⭐⭐⭐</span></div>
-                        <p className="text-gray-700 text-sm mt-1">"Good work, but arrived 15 minutes late. Quality of repair was excellent."</p>
-                        <span className="text-xs text-gray-500 mt-1 block">Date: 2025-09-15</span>
-                    </div>
-                </div>
-
             </div>
+            {isBookingModalOpen && service && (
+                <BookingModal 
+                    provider={provider} 
+                    service={service} 
+                    onClose={() => setIsBookingModalOpen(false)} 
+                    onBooked={handleBookingSuccess}
+                />
+            )}
         </div>
     );
 };
 
 
 const AboutPage = () => {
-// ... (rest of AboutPage component remains the same)
-// ...
-// ...
     return (
         <div className="bg-white">
             <div className="container mx-auto px-6 py-20">
@@ -782,42 +1134,6 @@ const AboutPage = () => {
                         Connecting communities with reliable local professionals. Our mission is to build trust in local services.
                     </p>
                 </div>
-
-                <div className="mt-16 grid md:grid-cols-2 gap-12 items-center">
-                    <div>
-                        <h2 className="text-3xl font-bold text-blue-600 mb-4">Our Commitment to Quality</h2>
-                        <p className="text-gray-700 leading-relaxed mb-4">
-                            Every professional on our platform is thoroughly vetted, verified, and reviewed by real customers. We ensure skill, punctuality, and fair pricing are the foundation of every service booked through us.
-                        </p>
-                        <p className="text-gray-700 leading-relaxed">
-                            We empower local workers to grow their businesses while providing unparalleled convenience and peace of mind to our customers.
-                        </p>
-                    </div>
-                    <div>
-                        <img src="https://placehold.co/600x400/E0E7FF/4338CA?text=Trusted+Experts" alt="Service Connect Team" className="rounded-xl shadow-2xl border border-gray-200"/>
-                    </div>
-                </div>
-                
-                <div className="mt-20">
-                    <h2 className="text-3xl font-bold text-center text-slate-800 mb-10">Our Core Values</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
-                        <div className="bg-white p-8 rounded-xl shadow-lg border border-blue-100">
-                            <div className="text-4xl text-blue-600 mb-3">🤝</div>
-                            <h3 className="text-xl font-semibold text-slate-800 mb-2">Trust & Transparency</h3>
-                            <p className="text-gray-600 text-sm">Clear communication and honest pricing every time.</p>
-                        </div>
-                        <div className="bg-white p-8 rounded-xl shadow-lg border border-blue-100">
-                             <div className="text-4xl text-blue-600 mb-3">✨</div>
-                            <h3 className="text-xl font-semibold text-slate-800 mb-2">Quality Execution</h3>
-                            <p className="text-gray-600 text-sm">We only partner with highly-rated, skilled professionals.</p>
-                        </div>
-                        <div className="bg-white p-8 rounded-xl shadow-lg border border-blue-100">
-                             <div className="text-4xl text-blue-600 mb-3">🚀</div>
-                            <h3 className="text-xl font-semibold text-slate-800 mb-2">Seamless Experience</h3>
-                            <p className="text-gray-600 text-sm">Easy booking, secure payments, and simple communication.</p>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     );
@@ -825,56 +1141,9 @@ const AboutPage = () => {
 
 
 const ContactPage = () => {
-// ... (rest of ContactPage component remains the same)
-// ...
-// ...
     return (
          <div className="container mx-auto px-6 py-16">
             <h1 className="text-4xl font-bold text-slate-800 mb-4 text-center">Get in Touch</h1>
-            <p className="text-lg text-gray-700 max-w-3xl mx-auto text-center mb-12">We're here to help! Send us a message or find our contact information below.</p>
-            <div className="grid md:grid-cols-2 gap-12">
-                
-                {/* Contact Form */}
-                <form className="max-w-full bg-white p-8 rounded-xl shadow-2xl border border-gray-200">
-                    <h2 className="text-2xl font-bold mb-6 text-blue-600">Send us a message</h2>
-                    <div className="space-y-6">
-                        <div>
-                            <label htmlFor="name" className="block text-sm font-semibold text-gray-700">Full Name</label>
-                            <input type="text" id="name" className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition" required />
-                        </div>
-                        <div>
-                            <label htmlFor="email" className="block text-sm font-semibold text-gray-700">Email Address</label>
-                            <input type="email" id="email" className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition" required />
-                        </div>
-                        <div>
-                            <label htmlFor="message" className="block text-sm font-medium text-gray-700">Message</label>
-                            <textarea id="message" rows="4" className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition" required></textarea>
-                        </div>
-                        <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition shadow-md">Send Message</button>
-                    </div>
-                </form>
-                
-                {/* Contact Info */}
-                <div className="bg-blue-50 p-8 rounded-xl shadow-lg border border-blue-200">
-                    <h2 className="text-2xl font-bold mb-6 text-blue-700">Reach Us Directly</h2>
-                    <div className="space-y-6 text-gray-700">
-                        <div>
-                            <h3 className="font-semibold text-lg text-slate-800">Customer Support</h3>
-                            <p>Email: support@serviceconnect.com</p>
-                            <p>Phone: +1 (555) 123-4567</p>
-                        </div>
-                        <div>
-                            <h3 className="font-semibold text-lg text-slate-800">Address</h3>
-                            <p>Service Connect HQ</p>
-                            <p>101 Tech Hub Lane, Bangalore, 560001, India</p>
-                        </div>
-                        <div>
-                            <h3 className="font-semibold text-lg text-slate-800">Business Hours</h3>
-                            <p>Monday - Friday: 9:00 AM - 6:00 PM (IST)</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div>
     );
 };
@@ -895,9 +1164,6 @@ const AuthFormContainer = ({ children, title }) => (
 
 
 const LoginPage = ({ setPage }) => {
-// ... (rest of LoginPage component remains the same)
-// ...
-// ...
     const { login } = useAuth();
     const [error, setError] = useState('');
     
@@ -917,7 +1183,7 @@ const LoginPage = ({ setPage }) => {
     };
     
     return (
-        <AuthFormContainer title="Sign in to your account">
+        <AuthFormContainer title="Sign in to Service Connect">
             <form className="space-y-6" onSubmit={handleSubmit}>
                 <div>
                     <label htmlFor="email" className="block text-sm font-semibold text-gray-700">Email address</label>
@@ -942,9 +1208,6 @@ const LoginPage = ({ setPage }) => {
 
 
 const RegisterPage = ({ setPage }) => {
-// ... (rest of RegisterPage component remains the same)
-// ...
-// ...
     const { register, login } = useAuth();
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -974,18 +1237,16 @@ const RegisterPage = ({ setPage }) => {
         if (result.success) {
             setSuccess(result.message + " Logging you in...");
             
-            // Auto-login after successful registration
             const loginResult = await login(email, password);
             
             if (loginResult.success) {
                 if (role === 'provider') {
-                    // Redirect provider to setup page
                     setPage('providerSetup', { primaryServiceId: primaryService });
                 } else {
                     setPage('customerDashboard');
                 }
             } else {
-                setPage('login'); // Fallback to login if auto-login fails
+                setPage('login'); 
             }
         } else {
             setError(result.message || "Registration failed.");
@@ -1001,7 +1262,7 @@ const RegisterPage = ({ setPage }) => {
                         className="mt-1 block w-full pl-4 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition">
                         <option value="customer">Customer (Looking for services)</option>
                         <option value="provider">Service Provider (Offering services)</option>
-                        <option value="admin">Admin (Testing/Setup)</option>
+                        {/* Admin role is hidden from public registration */}
                     </select>
                 </div>
                 {role === 'provider' && services.length > 0 && (
@@ -1034,9 +1295,6 @@ const RegisterPage = ({ setPage }) => {
 
 
 const ForgotPasswordPage = ({ setPage }) => {
-// ... (rest of ForgotPasswordPage component remains the same)
-// ...
-// ...
     const { sendOtp, resetPassword } = useAuth();
     const [step, setStep] = useState(1);
     const [message, setMessage] = useState('');
@@ -1050,7 +1308,7 @@ const ForgotPasswordPage = ({ setPage }) => {
         const submittedEmail = e.target.email.value;
         setEmail(submittedEmail);
         
-        const result = await sendOtp(submittedEmail); // API call
+        const result = await sendOtp(submittedEmail); 
         setLoading(false);
         
         if(result.success) {
@@ -1067,7 +1325,7 @@ const ForgotPasswordPage = ({ setPage }) => {
         const otp = e.target.otp.value;
         const newPassword = e.target.newPassword.value;
 
-        const result = await resetPassword(email, otp, newPassword); // API call
+        const result = await resetPassword(email, otp, newPassword);
         setLoading(false);
         
         if (result.success) {
@@ -1078,7 +1336,6 @@ const ForgotPasswordPage = ({ setPage }) => {
         }
     };
     
-    // --- Step 2: OTP Verification and New Password ---
     if (step === 2) {
         return (
             <AuthFormContainer title="Reset Your Password">
@@ -1102,9 +1359,8 @@ const ForgotPasswordPage = ({ setPage }) => {
         );
     }
 
-    // --- Step 1: Email Submission ---
     return (
-        <AuthFormContainer title="Reset your password">
+        <AuthFormContainer title="Forgot Password">
             <p className="text-center text-sm text-gray-600 mb-6">Enter your account's email address to receive a password reset code.</p>
             <form className="space-y-6" onSubmit={handleEmailSubmit}>
                 <div>
@@ -1126,9 +1382,6 @@ const ForgotPasswordPage = ({ setPage }) => {
 
 
 const ProviderSetupPage = ({ setPage, pageData }) => {
-// ... (rest of ProviderSetupPage component remains the same)
-// ...
-// ...
     const { token } = useAuth();
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -1141,9 +1394,9 @@ const ProviderSetupPage = ({ setPage, pageData }) => {
         const profileData = {
             display_name: e.target.display_name.value,
             bio: e.target.bio.value,
-            location_lat: parseFloat(e.target.lat.value) || 12.9716, // Default to Bangalore if missing
-            location_lon: parseFloat(e.target.lon.value) || 77.5946,
-            service_radius_km: parseInt(e.target.radius.value, 10) || 10,
+            location_lat: parseFloat(e.target.lat.value), 
+            location_lon: parseFloat(e.target.lon.value),
+            service_radius_km: parseInt(e.target.radius.value, 10),
             service_ids: [pageData.primaryServiceId],
         };
 
@@ -1184,12 +1437,12 @@ const ProviderSetupPage = ({ setPage, pageData }) => {
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                      <div>
-                        <label htmlFor="lat" className="block text-sm font-semibold text-gray-700">Location Latitude (Default: Bangalore)</label>
-                        <input id="lat" name="lat" type="number" step="any" defaultValue="12.9716" className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
+                        <label htmlFor="lat" className="block text-sm font-semibold text-gray-700">Location Latitude</label>
+                        <input id="lat" name="lat" type="number" step="any" defaultValue="12.9716" required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
                     </div>
                      <div>
                         <label htmlFor="lon" className="block text-sm font-semibold text-gray-700">Location Longitude</label>
-                        <input id="lon" name="lon" type="number" step="any" defaultValue="77.5946" className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
+                        <input id="lon" name="lon" type="number" step="any" defaultValue="77.5946" required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
                     </div>
                      <div>
                         <label htmlFor="radius" className="block text-sm font-semibold text-gray-700">Service Radius (km)</label>
@@ -1210,9 +1463,6 @@ const ProviderSetupPage = ({ setPage, pageData }) => {
 // --- Dashboard Layout and Helper Components ---
 
 const DashboardLayout = ({ children, navItems, activeTab, setActiveTab, title }) => {
-// ... (rest of DashboardLayout component remains the same)
-// ...
-// ...
     const { user } = useAuth();
     return (
         <div className="bg-gray-50 min-h-screen">
@@ -1254,13 +1504,15 @@ const CustomerBookingHistory = () => {
     const [bookings, setBookings] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [activeModal, setActiveModal] = useState(null);
+    const [selectedBooking, setSelectedBooking] = useState(null);
     
     const fetchBookings = useCallback(async () => {
         if (!token || user?.role !== 'customer') return;
         setLoading(true);
         setError('');
         try {
-            const res = await fetch(`${API_BASE_URL}/customer/bookings`, { // New backend route needed!
+            const res = await fetch(`${API_BASE_URL}/customer/bookings`, { 
                 headers: { 'x-auth-token': token },
             });
             
@@ -1281,12 +1533,22 @@ const CustomerBookingHistory = () => {
     useEffect(() => {
         fetchBookings();
     }, [fetchBookings]);
+    
+    const handleReviewModalOpen = (booking) => {
+        setSelectedBooking(booking);
+        setActiveModal('review');
+    };
+    
+    const handleChatModalOpen = (booking) => {
+        setSelectedBooking(booking);
+        setActiveModal('chat');
+    };
 
 
     return (
         <div className="space-y-6">
             <h2 className="text-2xl font-bold text-slate-700">Your Booking History</h2>
-            <p className="text-gray-600">Track the status of your requested services and access payment options.</p>
+            <p className="text-gray-600">Track the status of your requested services and access chat and payment options.</p>
             
             {error && <ErrorMessage message={error}/>}
             {loading && <Spinner />}
@@ -1296,21 +1558,46 @@ const CustomerBookingHistory = () => {
             </p>}
 
             {bookings.map(booking => (
-                <BookingCard key={booking.id} booking={booking} isCustomer={true} handleAction={() => {}} />
+                <BookingCard 
+                    key={booking.id} 
+                    booking={booking} 
+                    isCustomer={true} 
+                    handleAction={() => {}}
+                    onReviewModalOpen={handleReviewModalOpen}
+                    onChatModalOpen={handleChatModalOpen}
+                />
             ))}
+            
+            {activeModal === 'review' && selectedBooking && (
+                <ReviewAndPaymentModal 
+                    booking={selectedBooking} 
+                    onClose={() => setActiveModal(null)} 
+                    onCompleted={fetchBookings} // Refresh bookings after review/payment
+                />
+            )}
+            
+            {activeModal === 'chat' && selectedBooking && (
+                <ChatComponent
+                    booking={selectedBooking}
+                    onClose={() => setActiveModal(null)} 
+                    isCustomer={true}
+                />
+            )}
         </div>
     );
 };
 
 const CustomerProfileManagement = () => {
     const { user, token, fetchUserProfile } = useAuth();
+    // Updated to use lat/lon instead of zip_code
     const [profileData, setProfileData] = useState({
         email: user?.email || '',
-        full_name: user?.profile?.full_name || '',
-        phone_number: user?.profile?.phone_number || '',
-        address_line_1: user?.profile?.address_line_1 || '',
-        city: user?.profile?.city || '',
-        zip_code: user?.profile?.zip_code || '',
+        full_name: getProfileField(user, 'full_name'),
+        phone_number: getProfileField(user, 'phone_number'),
+        address_line_1: getProfileField(user, 'address_line_1'),
+        city: getProfileField(user, 'city'),
+        location_lat: getProfileField(user, 'location_lat', 0),
+        location_lon: getProfileField(user, 'location_lon', 0),
     });
     
     const [error, setError] = useState('');
@@ -1321,11 +1608,12 @@ const CustomerProfileManagement = () => {
         if (user) {
             setProfileData({
                 email: user.email || '',
-                full_name: user.profile?.full_name || '',
-                phone_number: user.profile?.phone_number || '',
-                address_line_1: user.profile?.address_line_1 || '',
-                city: user.profile?.city || '',
-                zip_code: user.profile?.zip_code || '',
+                full_name: getProfileField(user, 'full_name'),
+                phone_number: getProfileField(user, 'phone_number'),
+                address_line_1: getProfileField(user, 'address_line_1'),
+                city: getProfileField(user, 'city'),
+                location_lat: getProfileField(user, 'location_lat', 0),
+                location_lon: getProfileField(user, 'location_lon', 0),
             });
         }
     }, [user]);
@@ -1338,6 +1626,13 @@ const CustomerProfileManagement = () => {
         e.preventDefault();
         setError(''); setSuccess(''); setLoading(true);
 
+        // Ensure lat/lon are sent as numbers
+        const dataToSend = {
+             ...profileData,
+             location_lat: parseFloat(profileData.location_lat),
+             location_lon: parseFloat(profileData.location_lon),
+        }
+        
         try {
             const response = await fetch(`${API_BASE_URL}/user/profile`, {
                 method: 'PUT',
@@ -1345,14 +1640,13 @@ const CustomerProfileManagement = () => {
                     'Content-Type': 'application/json',
                     'x-auth-token': token,
                 },
-                body: JSON.stringify(profileData),
+                body: JSON.stringify(dataToSend),
             });
             
             const data = await response.json();
             
             if (response.ok) {
                 setSuccess('Profile updated successfully! Refreshing data...');
-                // IMPORTANT: Re-fetch profile to update global context and local state
                 await fetchUserProfile(token); 
             } else {
                 setError(data.error || 'Failed to update profile. Email might be in use.');
@@ -1366,8 +1660,8 @@ const CustomerProfileManagement = () => {
     
     return (
         <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-slate-700">Account & Contact Settings</h2>
-            <p className="text-gray-600">Update your email and personal contact details.</p>
+            <h2 className="text-2xl font-bold text-slate-700">Account & Location Settings</h2>
+            <p className="text-gray-600">Update your email, contact details, and default service location.</p>
             
             {error && <ErrorMessage message={error}/>}
             {success && <SuccessMessage message={success}/>}
@@ -1400,7 +1694,7 @@ const CustomerProfileManagement = () => {
                     </div>
                 </div>
                 
-                <h3 className="text-lg font-semibold text-blue-600 border-b pb-2 pt-4">Default Address</h3>
+                <h3 className="text-lg font-semibold text-blue-600 border-b pb-2 pt-4">Default Location</h3>
                  <div>
                     <label htmlFor="address_line_1" className="block text-sm font-semibold text-gray-700">Address Line 1</label>
                     <input id="address_line_1" name="address_line_1" type="text" value={profileData.address_line_1} onChange={handleChange} className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
@@ -1411,8 +1705,12 @@ const CustomerProfileManagement = () => {
                         <input id="city" name="city" type="text" value={profileData.city} onChange={handleChange} className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
                     </div>
                     <div>
-                        <label htmlFor="zip_code" className="block text-sm font-semibold text-gray-700">Zip Code</label>
-                        <input id="zip_code" name="zip_code" type="text" value={profileData.zip_code} onChange={handleChange} className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
+                        <label htmlFor="location_lat" className="block text-sm font-semibold text-gray-700">Latitude</label>
+                        <input id="location_lat" name="location_lat" type="number" step="any" value={profileData.location_lat} onChange={handleChange} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
+                    </div>
+                    <div>
+                        <label htmlFor="location_lon" className="block text-sm font-semibold text-gray-700">Longitude</label>
+                        <input id="location_lon" name="location_lon" type="number" step="any" value={profileData.location_lon} onChange={handleChange} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
                     </div>
                 </div>
 
@@ -1448,7 +1746,6 @@ const CustomerDashboard = ({ setPage }) => {
     const [activeTab, setActiveTab] = useState('bookings');
     const navItems = [
         { tab: 'bookings', label: 'My Bookings' },
-        // NEW TAB for visibility
         { tab: 'findServices', label: 'Find a Service' }, 
         { tab: 'profile', label: 'My Profile' },
     ];
@@ -1457,7 +1754,6 @@ const CustomerDashboard = ({ setPage }) => {
         switch (activeTab) {
             case 'bookings': return <CustomerBookingHistory />;
             case 'profile': return <CustomerProfileManagement />;
-            // NEW TAB implementation
             case 'findServices': return <CustomerFindServices setPage={setPage} />;
             default: return <CustomerBookingHistory />;
         }
@@ -1488,12 +1784,10 @@ const ProviderProfileManagement = () => {
         setError('');
         
         try {
-            // 1. Fetch provider's profile (GET route is now active in backend)
             const res = await fetch(`${API_BASE_URL}/provider/profile`, {
                 headers: { 'x-auth-token': token },
             });
             
-            // CRITICAL FIX: Only call .json() on success. If !res.ok, read text/error message.
             if (!res.ok) {
                 const errorText = await res.json(); 
                 throw new Error(errorText.error || `Failed to fetch profile. Status: ${res.status}`);
@@ -1501,7 +1795,6 @@ const ProviderProfileManagement = () => {
             const profileData = await res.json();
             setProfile(profileData.provider_profile);
             
-            // 2. Fetch all service categories for the dropdown
             const servicesRes = await fetch(`${API_BASE_URL}/services`);
             const servicesData = await servicesRes.json();
             setServices(servicesData || []);
@@ -1540,7 +1833,7 @@ const ProviderProfileManagement = () => {
         
         try {
             const response = await fetch(`${API_BASE_URL}/provider/profile`, {
-                method: 'POST', // POST is used for profile update/create in the current backend design
+                method: 'POST', 
                 headers: {
                     'Content-Type': 'application/json',
                     'x-auth-token': token,
@@ -1548,7 +1841,6 @@ const ProviderProfileManagement = () => {
                 body: JSON.stringify(profileData),
             });
             
-             // CRITICAL FIX: Only call .json() on success.
             const data = await response.json();
             
             if (response.ok) {
@@ -1566,7 +1858,6 @@ const ProviderProfileManagement = () => {
     if (error && !profile) return <ErrorMessage message={error} />;
     if (!profile) return <ErrorMessage message="Provider profile data is missing. Please contact support or complete initial setup." />;
 
-    // Ensure service_ids is defined before accessing [0]
     const currentServiceId = profile.service_ids && profile.service_ids.length > 0 
         ? profile.service_ids[0] 
         : (services[0]?.id || '');
@@ -1574,7 +1865,6 @@ const ProviderProfileManagement = () => {
     return (
         <div className="space-y-6">
             <h2 className="text-2xl font-bold text-slate-700">Manage Your Public Profile</h2>
-            <p className="text-gray-600">Update your visibility, bio, location, and primary service offering.</p>
             
             {error && <ErrorMessage message={error}/>}
             {success && <SuccessMessage message={success}/>}
@@ -1628,17 +1918,17 @@ const ProviderBookingRequests = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [updateStatus, setUpdateStatus] = useState(null);
+    const [activeModal, setActiveModal] = useState(null);
+    const [selectedBooking, setSelectedBooking] = useState(null);
 
     const fetchBookings = useCallback(async () => {
         setLoading(true);
         setError('');
         try {
-            // Updated endpoint to use the correct GET route
             const res = await fetch(`${API_BASE_URL}/provider/bookings`, { 
                 headers: { 'x-auth-token': token },
             });
             
-             // CRITICAL FIX: Only call .json() on success.
             if (!res.ok) {
                  const errorText = await res.json();
                  throw new Error(errorText.error || `Failed to fetch bookings. Status: ${res.status}`);
@@ -1670,7 +1960,6 @@ const ProviderBookingRequests = () => {
                 body: JSON.stringify({ status }),
             });
             
-             // CRITICAL FIX: Only call .json() on success.
             if (!response.ok) {
                 const errorText = await response.json();
                 throw new Error(errorText.error || `Action failed for booking ${bookingId}. Status: ${response.status}`);
@@ -1678,7 +1967,6 @@ const ProviderBookingRequests = () => {
             
             const data = await response.json();
             if (response.ok) {
-                // Success, refresh the list
                 fetchBookings();
                 setUpdateStatus({ id: bookingId, success: true, message: data.message });
             } 
@@ -1689,7 +1977,11 @@ const ProviderBookingRequests = () => {
         }
     };
     
-    // Split bookings into active/pending and history
+    const handleChatModalOpen = (booking) => {
+        setSelectedBooking(booking);
+        setActiveModal('chat');
+    };
+    
     const pendingBookings = bookings.filter(b => b.booking_status === 'pending_provider' || b.booking_status === 'accepted');
     const historyBookings = bookings.filter(b => b.booking_status === 'rejected' || b.booking_status === 'completed' || b.booking_status === 'closed');
 
@@ -1705,13 +1997,27 @@ const ProviderBookingRequests = () => {
             {!loading && pendingBookings.length === 0 && <p className="text-gray-500 p-4 bg-blue-50 rounded-lg border">You have no active or pending booking requests right now. Time for a break!</p>}
 
             {pendingBookings.map(booking => (
-                <BookingCard key={booking.id} booking={booking} isCustomer={false} handleAction={handleAction} />
+                <BookingCard 
+                    key={booking.id} 
+                    booking={booking} 
+                    isCustomer={false} 
+                    handleAction={handleAction} 
+                    onChatModalOpen={handleChatModalOpen}
+                />
             ))}
             
             <h3 className="text-xl font-semibold text-slate-800 border-b pb-2 mt-10">Booking History ({historyBookings.length})</h3>
             {historyBookings.map(booking => (
                 <BookingCard key={booking.id} booking={booking} isCustomer={false} handleAction={() => {}} />
             ))}
+            
+            {activeModal === 'chat' && selectedBooking && (
+                <ChatComponent
+                    booking={selectedBooking}
+                    onClose={() => setActiveModal(null)} 
+                    isCustomer={false}
+                />
+            )}
 
         </div>
     );
@@ -1730,7 +2036,6 @@ const ProviderEarnings = () => {
     return (
         <div className="space-y-6">
             <h2 className="text-2xl font-bold text-slate-700">Your Payouts & Performance Analytics</h2>
-            <p className="text-gray-600">Track your total income and key performance indicators.</p>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
                 <div className="bg-green-100 text-green-800 p-6 rounded-xl shadow-lg border border-green-300">
@@ -1745,13 +2050,6 @@ const ProviderEarnings = () => {
                     <p className="text-sm font-medium">Average Rating</p>
                     <h3 className="text-3xl font-extrabold mt-1">⭐ {mockData.avgRating.toFixed(2)}</h3>
                 </div>
-            </div>
-            
-            <div className="bg-white p-6 rounded-xl shadow-inner border border-gray-200">
-                <h3 className="text-xl font-bold text-slate-700 mb-4">Payout Schedule</h3>
-                <p className="text-gray-700">Last Payout Amount: **₹{mockData.lastPayout.toLocaleString()}**</p>
-                <p className="text-gray-700">Next Payout Date: **{mockData.nextPayout}**</p>
-                <p className="text-sm text-gray-500 mt-3">All payments are processed securely via our platform on a weekly cycle.</p>
             </div>
         </div>
     );
@@ -1784,9 +2082,6 @@ const ProviderDashboard = () => {
 
 
 const AdminDashboard = () => {
-// ... (rest of AdminDashboard component remains the same)
-// ...
-// ...
     const { token } = useAuth();
     const [activeTab, setActiveTab] = useState('overview');
     const [users, setUsers] = useState([]);
@@ -1809,7 +2104,6 @@ const AdminDashboard = () => {
             const res = await fetch(`${API_BASE_URL}/admin/${endpoint}`, {
                 headers: { 'x-auth-token': token },
             });
-            // CRITICAL FIX: Only call .json() on success.
             if (!res.ok) {
                 const errorText = await res.json();
                 throw new Error(errorText.error || 'Failed to fetch admin data. Check authorization.');
@@ -1836,13 +2130,11 @@ const AdminDashboard = () => {
                 body: JSON.stringify({ is_verified: newStatus }),
             });
             
-            // CRITICAL FIX: Only call .json() on success.
             if (!res.ok) {
                 const errorText = await res.json();
                 throw new Error(errorText.error || `Failed to ${newStatus ? 'verify' : 'un-verify'} provider.`);
             }
             
-            // Re-fetch provider list to update UI
             await fetchData('providers', setProviders);
         } catch (err) {
             setError(err.message);
@@ -1852,7 +2144,6 @@ const AdminDashboard = () => {
     };
 
     useEffect(() => {
-        // Initial data fetches for overview stats
         if (token) {
             fetchData('users', setUsers);
             fetchData('providers', setProviders);
@@ -1861,7 +2152,6 @@ const AdminDashboard = () => {
     }, [token, fetchData]);
 
     useEffect(() => {
-        // Fetch data only when changing to the specific tab
         if (token && activeTab === 'users') fetchData('users', setUsers);
         if (token && activeTab === 'providers') fetchData('providers', setProviders);
         if (token && activeTab === 'bookings') fetchData('bookings', setBookings);
@@ -1908,10 +2198,8 @@ const AdminDashboard = () => {
         </div>
     );
 
-    // Data formatting functions
     const formatDate = (dateString) => new Date(dateString).toLocaleDateString();
 
-    // Data for Users Table
     const userTableData = users.map(u => [
         u.id, 
         u.email, 
@@ -1919,24 +2207,22 @@ const AdminDashboard = () => {
         formatDate(u.created_at)
     ]);
 
-    // Data for Providers Table
     const providerTableData = providers.map(p => [
         p.id, 
         p.display_name, 
         p.services_offered || 'N/A',
         p.review_count,
         <span key={p.id} className={`font-bold ${p.is_verified ? 'text-green-600' : 'text-yellow-600'}`}>{p.is_verified ? 'Verified' : 'Pending'}</span>,
-        p.id // Placeholder for Action button rendering in AdminTable
+        p.id 
     ]);
 
-    // Data for Bookings Table
     const bookingTableData = bookings.map(b => [
         b.id,
         b.provider_name,
         b.customer_email,
         formatDate(b.scheduled_at),
         <span key={b.id} className={`font-bold uppercase text-xs px-2 py-1 rounded-full ${
-            b.booking_status === 'closed' || b.booking_status === 'paid' ? 'bg-green-100 text-green-700' :
+            b.booking_status === 'closed' ? 'bg-green-100 text-green-700' :
             b.booking_status === 'pending_provider' ? 'bg-yellow-100 text-yellow-700' :
             'bg-blue-100 text-blue-700'
         }`}>{b.booking_status.replace('_', ' ')}</span>,
@@ -1988,6 +2274,7 @@ export default function App() {
     const [pageData, setPageData] = useState(null);
     const [selectedService, setSelectedService] = useState(null);
     const [selectedProvider, setSelectedProvider] = useState(null);
+    const [searchParams, setSearchParams] = useState(null); // For global search state
 
     const navigate = (pageName, data = null) => {
         setPageData(data);
@@ -1997,36 +2284,20 @@ export default function App() {
 
     const renderPage = () => {
         switch (page) {
-            case 'home': return <HomePage setPage={navigate} setSelectedService={setSelectedService} />;
-            case 'allServices': return <AllServicesPage setPage={navigate} setSelectedService={setSelectedService} />;
+            case 'home': return <HomePage setPage={navigate} setSelectedService={setSelectedService} setSearchParams={setSearchParams} />;
+            case 'allServices': return <AllServicesPage setPage={navigate} setSelectedService={setSelectedService} searchParams={searchParams} />;
             case 'serviceProviders': return <ServiceProvidersPage service={selectedService} setPage={navigate} setSelectedProvider={setSelectedProvider} />;
-            case 'providerDetail': 
-                // Fix for ProviderDetailPage: added console log instead of alert()
-                const ProviderDetailWithFix = () => {
-                    const { isAuthenticated, setPage: navigate } = useAuth();
-                    const alert = (message) => console.log(`[UI Notification] ${message}`);
-                    
-                    const handleRequestService = () => {
-                        if (!isAuthenticated) {
-                            alert("Please log in or register to request a service.");
-                            navigate('login'); 
-                        } else {
-                            alert(`Ready to book ${selectedProvider?.display_name}. (Booking modal coming soon!)`);
-                        }
-                    };
-                    return <ProviderDetailPage provider={selectedProvider} setPage={navigate} handleRequestService={handleRequestService} />;
-                };
-                return <ProviderDetailWithFix />;
+            case 'providerDetail': return <ProviderDetailPage provider={selectedProvider} service={selectedService} setPage={navigate} />;
             case 'about': return <AboutPage />;
             case 'contact': return <ContactPage />;
             case 'login': return <LoginPage setPage={navigate} />;
             case 'register': return <RegisterPage setPage={navigate} />;
             case 'forgotPassword': return <ForgotPasswordPage setPage={navigate} />; 
             case 'providerSetup': return <ProviderSetupPage setPage={navigate} pageData={pageData} />;
-            case 'customerDashboard': return <CustomerDashboard setPage={navigate} />; // Pass setPage here
+            case 'customerDashboard': return <CustomerDashboard setPage={navigate} />; 
             case 'providerDashboard': return <ProviderDashboard />;
             case 'adminDashboard': return <AdminDashboard />;
-            default: return <HomePage setPage={navigate} setSelectedService={setSelectedService} />;
+            default: return <HomePage setPage={navigate} setSelectedService={setSelectedService} setSearchParams={setSearchParams} />;
         }
     };
     
