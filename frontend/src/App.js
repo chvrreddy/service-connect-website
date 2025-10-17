@@ -3,14 +3,21 @@ import React, { useState, useEffect, useCallback, createContext, useContext } fr
 // --- API Configuration ---
 const API_BASE_URL = 'http://localhost:3001/api/v1';
 const CURRENCY_SYMBOL = '₹'; // Indian Rupees
+
 // --- Global Styling Classes (Dark Cyan Theme) ---
 const DARK_CYAN_CLASS = 'bg-[#008080]'; // Main background/button color
 const DARK_CYAN_TEXT_CLASS = 'text-[#008080]'; // Main text/accent color
 const DARK_CYAN_HOVER_CLASS = 'hover:bg-[#006666]'; // Darker hover state
 
+// Mock UPI QR Code URL for deposit
+const MOCK_UPI_QR_CODE_URL = '/IMG_20251017_234756.jpg';
+
 // --- UTILITY FUNCTIONS ---
 // Helper to safely read nested user profile data
 const getProfileField = (user, field, defaultValue = '') => user?.profile?.[field] || defaultValue;
+// FIX: Corrected column name to profile_picture_url
+const getPhotoUrl = (user) => user?.profile_picture_url || `https://placehold.co/150x150/E0F2F1/008080?text=${user?.email?.charAt(0).toUpperCase() || 'U'}`;
+
 
 // --- AUTH CONTEXT ---
 
@@ -41,6 +48,7 @@ const AuthProvider = ({ children }) => {
             const data = await response.json();
             
             if (response.ok) {
+                // User object now uses the correct property name profile_picture_url
                 setUser(data.user_profile);
             } else {
                 logout(); 
@@ -53,7 +61,7 @@ const AuthProvider = ({ children }) => {
         }
     }, [logout]);
     
-    // New: Fetch unread message count
+    // Fetch unread message count
     const fetchUnreadCount = useCallback(async (authToken) => {
         if (!authToken || !user || user.role === 'admin') return;
         try {
@@ -78,7 +86,6 @@ const AuthProvider = ({ children }) => {
     useEffect(() => {
         if (!token || loading || user?.role === 'admin') return;
         
-        // Fetch immediately, then set up poll
         fetchUnreadCount(token); 
         
         const interval = setInterval(() => {
@@ -88,7 +95,7 @@ const AuthProvider = ({ children }) => {
         return () => clearInterval(interval);
     }, [token, loading, fetchUnreadCount, user]);
 
-    // New: Mark messages as read
+    // Mark messages as read
     const markMessagesAsRead = useCallback(async (bookingId) => {
         if (!token) return;
         try {
@@ -145,9 +152,9 @@ const AuthProvider = ({ children }) => {
         }
     };
     
-    // New: OTP Verification during Registration
+    // OTP Verification during Registration/Password Reset (no changes needed)
     const verifyOtp = async (email, otp) => {
-         try {
+        try {
             const response = await fetch(`${API_BASE_URL}/auth/verify-otp`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -247,7 +254,6 @@ const Header = ({ setPage }) => {
     };
 
     return (
-        // FIX: Applied DARK_CYAN_CLASS
         <header className={`${DARK_CYAN_CLASS} text-white shadow-lg sticky top-0 z-50`}>
             <nav className="container mx-auto px-6 py-4 flex justify-between items-center">
                 {/* Home Text Link - Updated Title */}
@@ -263,6 +269,19 @@ const Header = ({ setPage }) => {
                 <div className="flex items-center space-x-4">
                     {isAuthenticated ? (
                         <>
+                            {/* Profile Picture in Header */}
+                            <div className="relative group cursor-pointer">
+                                <img 
+                                    src={getPhotoUrl(user)} 
+                                    alt="Profile" 
+                                    className="w-8 h-8 rounded-full object-cover border-2 border-white" 
+                                    onClick={() => setPage(getDashboardPage())}
+                                />
+                                <span className="absolute hidden group-hover:block bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-max bg-gray-800 text-white text-xs rounded py-1 px-2">
+                                    {user.email}
+                                </span>
+                            </div>
+
                             <button onClick={() => setPage(getDashboardPage())} className="text-white font-semibold hover:text-cyan-200 transition relative">
                                 Dashboard
                                 {/* Notification Badge */}
@@ -277,7 +296,6 @@ const Header = ({ setPage }) => {
                             </button>
                         </>
                     ) : (
-                        // FIX: Applied DARK_CYAN_TEXT_CLASS
                         <button onClick={() => setPage('login')} className={`bg-white ${DARK_CYAN_TEXT_CLASS} px-4 py-2 rounded-lg shadow-md hover:bg-gray-100 transition font-bold`}>
                             Login / Sign up
                         </button>
@@ -353,7 +371,13 @@ const ProviderCard = ({ provider, onClick }) => (
     <div onClick={() => onClick(provider)} className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300 cursor-pointer flex flex-col p-4 space-y-3 border border-gray-200 min-w-[280px]">
         
         <div className="flex items-center space-x-3">
-            <img className="w-16 h-16 rounded-full object-cover shadow-md" src={`https://placehold.co/150x150/E0E7FF/4338CA?text=${provider.display_name.charAt(0)}`} alt={provider.display_name} />
+             {/* Use actual profile photo URL */}
+            <img 
+                className="w-16 h-16 rounded-full object-cover shadow-md" 
+                // FIX: Corrected column name to profile_picture_url
+                src={provider.profile_picture_url || `https://placehold.co/150x150/E0F2F1/008080?text=${provider.display_name.charAt(0)}`}
+                alt={provider.display_name} 
+            />
             <div className="flex-grow">
                 <div className="flex items-center space-x-2">
                     <h3 className="text-lg font-bold text-slate-800">{provider.display_name}</h3>
@@ -368,7 +392,6 @@ const ProviderCard = ({ provider, onClick }) => (
                 <span className="text-amber-500 mr-1 text-lg font-extrabold">{parseFloat(provider.average_rating || 0).toFixed(1)}/5</span>
                 <span className="ml-2 text-gray-500 text-xs">({provider.review_count || 0} reviews)</span>
             </div>
-            {/* FIX: Applied DARK_CYAN_CLASS and DARK_CYAN_HOVER_CLASS */}
             <button className={`${DARK_CYAN_CLASS} text-white text-xs font-semibold px-4 py-1.5 rounded-lg ${DARK_CYAN_HOVER_CLASS} transition`}>
                 View Profile
             </button>
@@ -376,14 +399,12 @@ const ProviderCard = ({ provider, onClick }) => (
     </div>
 );
 
-// FIX: Updated spinner color class
 const Spinner = () => <div className="flex justify-center items-center h-64"><div className={`animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 ${DARK_CYAN_TEXT_CLASS.replace('text', 'border')}`}></div></div>;
 const ErrorMessage = ({ message }) => <div className="text-center text-red-700 bg-red-100 p-4 rounded-lg my-4 font-medium border border-red-300">{message}</div>;
 const SuccessMessage = ({ message }) => <div className="text-center text-green-700 bg-green-100 p-4 rounded-lg my-4 font-medium border border-green-300">{message}</div>;
 
 const HowItWorksCard = ({ icon, title, description, stars }) => (
     <div className="flex flex-col items-center text-center bg-white p-6 rounded-xl shadow-lg border border-gray-100 w-full">
-        {/* FIX: Applied DARK_CYAN_TEXT_CLASS */}
         <div className={`text-4xl ${DARK_CYAN_TEXT_CLASS} mb-3`}>{icon}</div>
         <h3 className="text-lg font-semibold text-slate-800 mb-1">{title}</h3>
         <p className="text-sm text-gray-600">{description}</p>
@@ -404,377 +425,6 @@ const Modal = ({ title, children, onClose }) => (
         </div>
     </div>
 );
-
-const SetPriceModal = ({ booking, onClose, onPriceSet }) => {
-    const { token } = useAuth();
-    const [amount, setAmount] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
-    
-    const handleSetPrice = async (e) => {
-        e.preventDefault();
-        setLoading(true);
-        setError('');
-
-        const finalAmount = parseFloat(amount);
-        if (isNaN(finalAmount) || finalAmount <= 0) {
-            setError('Please enter a valid positive amount.');
-            setLoading(false);
-            return;
-        }
-
-        try {
-            // New logic: send 'accepted' status AND the amount. Backend sets status to 'awaiting_customer_confirmation'
-            const response = await fetch(`${API_BASE_URL}/bookings/${booking.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-                body: JSON.stringify({ status: 'accepted', amount: finalAmount }),
-            });
-            const data = await response.json();
-
-            if (response.ok) {
-                setSuccess(`Price of ${CURRENCY_SYMBOL}${finalAmount.toFixed(2)} set. Customer notified for confirmation.`);
-                setTimeout(() => onPriceSet(), 2000);
-            } else {
-                setError(data.error || 'Failed to set price.');
-            }
-        } catch (err) {
-            setError('Network error occurred.');
-        } finally {
-            setLoading(false);
-        }
-    };
-    
-    return (
-        <Modal title={`Set Price for Booking #${booking.id}`} onClose={onClose}>
-            <p className="text-gray-600 mb-4">Set the final service price. The customer must confirm this price before the booking status moves to 'Accepted'.</p>
-            {error && <ErrorMessage message={error} />}
-            {success && <SuccessMessage message={success} />}
-            <form onSubmit={handleSetPrice} className="space-y-4">
-                 <div>
-                    <label htmlFor="amount" className="block text-sm font-semibold text-gray-700">Final Price ({CURRENCY_SYMBOL})</label>
-                    <input 
-                        id="amount" 
-                        name="amount" 
-                        type="number" 
-                        step="0.01"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        required 
-                        className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg text-lg" 
-                        placeholder="e.g., 5000.00"
-                    />
-                </div>
-                {/* FIX: Applied DARK_CYAN_CLASS and DARK_CYAN_HOVER_CLASS */}
-                <button type="submit" disabled={loading} className={`w-full ${DARK_CYAN_CLASS} text-white font-bold py-3 rounded-lg ${DARK_CYAN_HOVER_CLASS} transition disabled:bg-gray-400`}>
-                    {loading ? 'Submitting Price...' : 'Submit Price & Await Confirmation'}
-                </button>
-            </form>
-        </Modal>
-    );
-};
-
-
-const BookingModal = ({ provider, service, onClose, onBooked, navigate }) => { 
-    const { token, user } = useAuth();
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
-
-    const handleBookingSuccess = () => {
-        onClose();
-        navigate('customerDashboard');
-    };
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setLoading(true);
-        setError('');
-        
-        const bookingData = {
-            provider_id: provider.id,
-            service_id: service.id,
-            scheduled_at: e.target.scheduled_at.value,
-            address: e.target.address.value,
-            customer_notes: e.target.customer_notes.value,
-            service_description: e.target.service_description.value, 
-        };
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/bookings`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-                body: JSON.stringify(bookingData),
-            });
-            const data = await response.json();
-
-            if (response.ok) {
-                setSuccess(`Request sent! ID: ${data.booking_id}. Provider will review shortly.`);
-                setTimeout(() => handleBookingSuccess(), 2000); 
-            } else {
-                setError(data.error || 'Failed to send booking request.');
-            }
-        } catch (err) {
-            setError('Network error occurred during booking.');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    if (!user) return <ErrorMessage message="You must be logged in to book a service." />;
-
-    // Use default location from user profile
-    const defaultLat = getProfileField(user, 'location_lat', 'N/A');
-    const defaultLon = getProfileField(user, 'location_lon', 'N/A');
-    const defaultAddress = getProfileField(user, 'address_line_1', '');
-    const defaultCity = getProfileField(user, 'city', '');
-    const fullAddress = defaultAddress + (defaultCity ? `, ${defaultCity}` : '');
-
-    return (
-        <Modal title={`Book ${service.name} with ${provider.display_name}`} onClose={onClose}>
-            {error && <ErrorMessage message={error} />}
-            {success && <SuccessMessage message={success} />}
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <p className="text-sm text-gray-600">**Important:** Your default location is set to ({defaultLat}, {defaultLon}). Update it in your dashboard if needed.</p>
-                <div>
-                    <label htmlFor="scheduled_at" className="block text-sm font-semibold text-gray-700">Scheduled Date & Time</label>
-                    <input id="scheduled_at" name="scheduled_at" type="datetime-local" required className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" />
-                </div>
-                <div>
-                    <label htmlFor="address" className="block text-sm font-semibold text-gray-700">Service Address</label>
-                    <input id="address" name="address" type="text" defaultValue={fullAddress} required className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" />
-                </div>
-                 <div>
-                    <label htmlFor="service_description" className="block text-sm font-semibold text-gray-700">Detailed Service Description (What do you need done?)</label>
-                    <textarea id="service_description" name="service_description" rows="3" required className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="e.g., Leaking faucet in the kitchen sink. Requires immediate attention."></textarea>
-                </div>
-                <div>
-                    <label htmlFor="customer_notes" className="block text-sm font-semibold text-gray-700">Additional Notes (Optional)</label>
-                    <textarea id="customer_notes" name="customer_notes" rows="2" className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
-                </div>
-                {/* FIX: Applied DARK_CYAN_CLASS and DARK_CYAN_HOVER_CLASS */}
-                <button type="submit" disabled={loading} className={`w-full ${DARK_CYAN_CLASS} text-white font-bold py-3 rounded-lg ${DARK_CYAN_HOVER_CLASS} transition disabled:bg-gray-400`}>
-                    {loading ? 'Sending Request...' : 'Confirm & Send Request'}
-                </button>
-            </form>
-        </Modal>
-    );
-};
-
-const ReviewAndPaymentModal = ({ booking, onClose, onCompleted }) => {
-    const { token, user } = useAuth();
-    const [rating, setRating] = useState(0); 
-    const [comment, setComment] = useState('');
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [isPaid, setIsPaid] = useState(booking.booking_status === 'closed');
-    const [isReviewed, setIsReviewed] = useState(false); 
-    
-    useEffect(() => {
-        setIsPaid(booking.booking_status === 'closed');
-    }, [booking.booking_status]);
-
-    const handlePayment = async (e) => {
-        e.preventDefault();
-        setLoading(true);
-        setError('');
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/payments`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-                body: JSON.stringify({ booking_id: booking.id }), 
-            });
-            const data = await response.json();
-
-            if (response.ok) {
-                setSuccess(`Payment successful! Amount debited from your wallet. You can now optionally leave a review.`);
-                setIsPaid(true);
-                onCompleted(); 
-            } else {
-                setError(data.error || 'Payment failed. Check your wallet balance.');
-            }
-        } catch (err) {
-            setError('Network error during payment processing.');
-        } finally {
-            setLoading(false);
-        }
-    };
-    
-    const handleReviewSubmit = async (e) => {
-        e.preventDefault();
-        setLoading(true);
-        setError('');
-        setSuccess('');
-
-        if (!isPaid) {
-            setError('Please complete the payment first before submitting a review.');
-            setLoading(false);
-            return;
-        }
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/reviews`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-                body: JSON.stringify({ 
-                    booking_id: booking.id, 
-                    rating: rating, 
-                    comment: comment 
-                }),
-            });
-            const data = await response.json();
-            
-            if (response.ok) {
-                setSuccess(data.message);
-                setIsReviewed(true);
-                onCompleted(); 
-            } else {
-                setError(data.error || 'Review submission failed. This booking may already be reviewed.');
-            }
-        } catch (err) {
-            setError('Network error during review submission.');
-        } finally {
-            setLoading(false);
-        }
-    };
-    
-    // Star rating component for re-use
-    const StarRating = () => (
-        <div className="flex justify-center space-x-1">
-            {[1, 2, 3, 4, 5].map((star) => (
-                <span 
-                    key={star} 
-                    onClick={() => setRating(star)}
-                    className={`cursor-pointer text-3xl transition ${star <= rating ? 'text-amber-400' : 'text-gray-300 hover:text-amber-300'}`}
-                >
-                    &#9733;
-                </span>
-            ))}
-        </div>
-    );
-    
-    const isPaymentPending = booking.booking_status === 'completed' && !isPaid;
-    const isReadyToReview = isPaid && !isReviewed;
-
-    return (
-        <Modal title={`Payment & Review for Booking #${booking.id}`} onClose={onClose}>
-            {error && <ErrorMessage message={error} />}
-            {success && <SuccessMessage message={success} />}
-
-            {/* --- Payment Section (Only visible if not yet paid) --- */}
-            {isPaymentPending && (
-                <div className="bg-red-50 p-4 rounded-lg mb-4 border border-red-200">
-                    <h3 className="text-xl font-bold text-red-700 mb-3">1. Complete Payment (Required)</h3>
-                    <p className="mb-3 text-gray-700">
-                        Final Service Fee: **{CURRENCY_SYMBOL}{parseFloat(booking.amount || 0).toFixed(2)}**
-                    </p>
-                    <button onClick={handlePayment} disabled={loading} className="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition disabled:bg-gray-400">
-                        {loading ? 'Processing...' : `Pay ${CURRENCY_SYMBOL}${parseFloat(booking.amount || 0).toFixed(2)} from Wallet`}
-                    </button>
-                </div>
-            )}
-            
-            {/* --- Review Section (Only visible after successful payment or if already paid) --- */}
-            {isReadyToReview && (
-                <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
-                    <h3 className="text-xl font-bold text-amber-700 mb-3">2. Optional Review</h3>
-                    <form onSubmit={handleReviewSubmit} className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2 text-center">Your Rating</label>
-                            <StarRating />
-                            <p className="text-center text-sm text-gray-500 mt-1">({rating} out of 5)</p>
-                        </div>
-                        <div>
-                            <label htmlFor="comment" className="block text-sm font-semibold text-gray-700">Comment (Optional)</label>
-                            <textarea id="comment" name="comment" rows="3" value={comment} onChange={(e) => setComment(e.target.value)} className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="Share your experience..."></textarea>
-                        </div>
-                        <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400">
-                            {loading ? 'Submitting...' : 'Submit Review (Optional)'}
-                        </button>
-                    </form>
-                </div>
-            )}
-            
-            {booking.booking_status === 'closed' && isReviewed && (
-                <SuccessMessage message="Review already submitted for this booking." />
-            )}
-            
-            <div className="mt-4 text-right">
-                <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700 font-medium">Close</button>
-            </div>
-
-        </Modal>
-    );
-};
-
-const PriceConfirmationModal = ({ booking, onClose, onConfirmed }) => {
-    const { token } = useAuth();
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
-
-    const handleConfirm = async (accepted) => {
-        setLoading(true);
-        setError('');
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/bookings/${booking.id}/confirm-price`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-                body: JSON.stringify({ accepted }),
-            });
-            const data = await response.json();
-
-            if (response.ok) {
-                setSuccess(data.message);
-                setTimeout(() => onConfirmed(), 2000); 
-            } else {
-                setError(data.error || 'Failed to process confirmation.');
-            }
-        } catch (err) {
-            setError('Network error occurred.');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    return (
-        <Modal title={`Confirm Price for Booking #${booking.id}`} onClose={onClose}>
-            {error && <ErrorMessage message={error} />}
-            {success && <SuccessMessage message={success} />}
-            
-            <div className="space-y-4">
-                <p className="text-lg text-slate-800 font-semibold">
-                    Provider's Quoted Price: 
-                    <span className="text-green-600 ml-2 text-2xl font-bold">{CURRENCY_SYMBOL}{parseFloat(booking.amount || 0).toFixed(2)}</span>
-                </p>
-                <p className="text-gray-600">
-                    If you accept, the service will be officially **Accepted**, and the chat will open for coordination. If you reject, the booking will be **Rejected** and cancelled.
-                </p>
-                
-                <div className="flex space-x-4 pt-4">
-                    <button 
-                        onClick={() => handleConfirm(true)} 
-                        disabled={loading}
-                        className="flex-1 bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition disabled:bg-gray-400"
-                    >
-                        {loading ? 'Confirming...' : 'Accept Price'}
-                    </button>
-                    <button 
-                        onClick={() => handleConfirm(false)} 
-                        disabled={loading}
-                        className="flex-1 bg-red-500 text-white font-bold py-3 rounded-lg hover:bg-red-600 transition disabled:bg-gray-400"
-                    >
-                        Reject Price
-                    </button>
-                </div>
-            </div>
-        </Modal>
-    );
-};
 
 const ChatComponent = ({ booking, onClose, isCustomer }) => {
     const { token, user, markMessagesAsRead } = useAuth();
@@ -889,9 +539,10 @@ const ChatComponent = ({ booking, onClose, isCustomer }) => {
     const isChatActive = booking.booking_status === 'accepted' || booking.booking_status === 'closed' || booking.booking_status === 'completed';
 
     const renderFileContent = (msg) => {
-        if (!msg.file_url) return null;
+        if (!msg.file_url || msg.file_url === 'pending') return null;
 
-        const isImage = msg.file_url.startsWith('data:image');
+        // Check file extension for image, since backend returns a full URL, not a data URI.
+        const isImage = /\.(jpe?g|png|gif|webp)$/i.test(msg.file_url); 
         const fileName = msg.content.replace('File uploaded: ', '');
 
         return (
@@ -906,11 +557,10 @@ const ChatComponent = ({ booking, onClose, isCustomer }) => {
                         className="max-w-full h-auto rounded-md cursor-pointer"
                     />
                 ) : (
-                    <p className="text-sm text-blue-500 truncate block font-mono">
-                        {fileName}
-                    </p>
+                    <a href={msg.file_url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-500 truncate block font-mono hover:underline">
+                        {fileName} (Click to View)
+                    </a>
                 )}
-                {/* Fallback for file messages without content */}
                 <p className="text-sm mt-1">{msg.content}</p>
             </div>
         );
@@ -931,7 +581,6 @@ const ChatComponent = ({ booking, onClose, isCustomer }) => {
                             const isSender = msg.sender_id === user.id;
                             return (
                                 <div key={index} className={`flex ${isSender ? 'justify-end' : 'justify-start'}`}>
-                                    {/* FIX: Applied DARK_CYAN_CLASS */}
                                     <div className={`max-w-xs md:max-w-md px-4 py-2 rounded-xl shadow-md ${isSender ? `${DARK_CYAN_CLASS} text-white rounded-br-none` : 'bg-gray-200 text-slate-800 rounded-tl-none'}`}>
                                         <p className="text-xs font-semibold mb-1 opacity-75">{isSender ? 'You' : msg.sender_email}</p>
                                         
@@ -950,7 +599,6 @@ const ChatComponent = ({ booking, onClose, isCustomer }) => {
                 {/* Input Area */}
                 <form onSubmit={handleSendMessage} className="p-4 bg-white border-t flex space-x-3 items-center">
                      {/* File Input Button */}
-                    {/* FIX: Applied DARK_CYAN_TEXT_CLASS */}
                     <label htmlFor="file-upload" className={`text-2xl cursor-pointer p-2 rounded-full transition ${isChatActive ? `${DARK_CYAN_TEXT_CLASS} hover:bg-gray-100` : 'text-gray-400'}`}>
                         &#x1F4F7;
                     </label>
@@ -979,7 +627,6 @@ const ChatComponent = ({ booking, onClose, isCustomer }) => {
                         </div>
                     )}
                     
-                    {/* FIX: Applied DARK_CYAN_CLASS and DARK_CYAN_HOVER_CLASS */}
                     <button 
                         type="submit" 
                         className={`${DARK_CYAN_CLASS} text-white px-6 py-2 rounded-lg font-bold ${DARK_CYAN_HOVER_CLASS} transition disabled:bg-gray-400`}
@@ -996,14 +643,14 @@ const ChatComponent = ({ booking, onClose, isCustomer }) => {
 
 
 const BookingCard = ({ booking, handleAction, isCustomer, onReviewModalOpen, onChatModalOpen, onPriceConfirmationOpen, onSetPriceOpen }) => {
-    // Helper to determine color based on status
+    // Helper to determine color based on status (no changes needed)
     const getStatusClasses = (status) => {
         switch (status) {
             case 'pending_provider': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-            case 'awaiting_customer_confirmation': return 'bg-purple-100 text-purple-800 border-purple-300 animate-pulse'; // New status
+            case 'awaiting_customer_confirmation': return 'bg-purple-100 text-purple-800 border-purple-300 animate-pulse'; 
             case 'accepted': return 'bg-blue-100 text-blue-800 border-blue-300';
-            case 'completed': return 'bg-red-100 text-red-800 border-red-300'; // Completed/Unpaid
-            case 'closed': return 'bg-green-100 text-green-800 border-green-300'; // Paid/Closed
+            case 'completed': return 'bg-red-100 text-red-800 border-red-300'; 
+            case 'closed': return 'bg-green-100 text-green-800 border-green-300'; 
             case 'rejected': return 'bg-gray-200 text-gray-700 border-gray-400';
             default: return 'bg-gray-100 text-gray-600 border-gray-300';
         }
@@ -1047,7 +694,6 @@ const BookingCard = ({ booking, handleAction, isCustomer, onReviewModalOpen, onC
             {/* Chat button (Active when accepted or closed) */}
             {(booking.booking_status === 'accepted' || booking.booking_status === 'closed' || booking.booking_status === 'completed') && (
                  <button 
-                    // FIX: Applied DARK_CYAN_CLASS and DARK_CYAN_HOVER_CLASS
                     className={`${DARK_CYAN_CLASS} text-white px-4 py-2 rounded-lg font-semibold ${DARK_CYAN_HOVER_CLASS} transition shadow-md`}
                     onClick={() => onChatModalOpen(booking)}
                 >
@@ -1090,7 +736,6 @@ const BookingCard = ({ booking, handleAction, isCustomer, onReviewModalOpen, onC
                         Mark Completed
                     </button>
                     <button 
-                        // FIX: Applied DARK_CYAN_CLASS and DARK_CYAN_HOVER_CLASS
                         className={`${DARK_CYAN_CLASS} text-white px-4 py-2 rounded-lg font-semibold ${DARK_CYAN_HOVER_CLASS} transition shadow-md`}
                         onClick={() => onChatModalOpen(booking)}
                     >
@@ -1119,7 +764,6 @@ const BookingCard = ({ booking, handleAction, isCustomer, onReviewModalOpen, onC
                     <p>📅 **Scheduled:** {new Date(booking.scheduled_at).toLocaleString()}</p>
                     <p>📍 **Location:** {booking.address}</p>
                     {(booking.amount && booking.booking_status !== 'pending_provider') && <p className="font-bold text-blue-600">💰 **Price:** {amountDisplay}</p>}
-                    {/* FIX: Applied DARK_CYAN_TEXT_CLASS for border */}
                     {booking.service_description && (
                         <p className={`mt-2 p-2 bg-gray-50 border-l-4 ${DARK_CYAN_TEXT_CLASS.replace('text', 'border')}`}>Description: {booking.service_description}</p>
                     )}
@@ -1141,10 +785,9 @@ const BookingCard = ({ booking, handleAction, isCustomer, onReviewModalOpen, onC
 
 const CustomerProfileManagement = () => {
     const { user, token, fetchUserProfile } = useAuth();
-    // Setting initial state: full_name should be empty string if null/undefined
     const [profileData, setProfileData] = useState({
         email: user?.email || '',
-        full_name: getProfileField(user, 'full_name', ''), // FIX: Ensure empty string default
+        full_name: getProfileField(user, 'full_name', ''), 
         phone_number: getProfileField(user, 'phone_number'),
         address_line_1: getProfileField(user, 'address_line_1'),
         city: getProfileField(user, 'city'),
@@ -1152,6 +795,7 @@ const CustomerProfileManagement = () => {
         location_lon: getProfileField(user, 'location_lon', 0),
     });
     
+    const [profilePhoto, setProfilePhoto] = useState(null); // New state for file input
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [loading, setLoading] = useState(false);
@@ -1160,7 +804,7 @@ const CustomerProfileManagement = () => {
         if (user) {
             setProfileData({
                 email: user.email || '',
-                full_name: getProfileField(user, 'full_name', ''), // FIX: Ensure empty string default
+                full_name: getProfileField(user, 'full_name', ''),
                 phone_number: getProfileField(user, 'phone_number'),
                 address_line_1: getProfileField(user, 'address_line_1'),
                 city: getProfileField(user, 'city'),
@@ -1174,11 +818,15 @@ const CustomerProfileManagement = () => {
         setProfileData({ ...profileData, [e.target.name]: e.target.value });
     };
     
-    const handleSubmit = async (e) => {
+    const handleFileChange = (e) => {
+        setProfilePhoto(e.target.files[0]);
+    };
+    
+    // Handles update of customer details (email/name/address)
+    const handleDetailSubmit = async (e) => {
         e.preventDefault();
         setError(''); setSuccess(''); setLoading(true);
 
-        // Ensure lat/lon are sent as numbers
         const dataToSend = {
              ...profileData,
              location_lat: parseFloat(profileData.location_lat),
@@ -1186,6 +834,7 @@ const CustomerProfileManagement = () => {
         }
         
         try {
+            // This endpoint handles text data only
             const response = await fetch(`${API_BASE_URL}/user/profile`, {
                 method: 'PUT',
                 headers: {
@@ -1198,10 +847,10 @@ const CustomerProfileManagement = () => {
             const data = await response.json();
             
             if (response.ok) {
-                setSuccess('Profile updated successfully! Refreshing data...');
+                setSuccess('Profile details updated! Please wait for data refresh.');
                 await fetchUserProfile(token); 
             } else {
-                setError(data.error || 'Failed to update profile. Email might be in use.');
+                setError(data.error || 'Failed to update profile details. Email might be in use.');
             }
         } catch (err) {
             setError('A network error occurred while submitting the update.');
@@ -1210,16 +859,75 @@ const CustomerProfileManagement = () => {
         }
     };
     
+    // Handles photo upload separately
+    const handlePhotoSubmit = async (e) => {
+         e.preventDefault();
+         if (!profilePhoto) return;
+         setError(''); setSuccess(''); setLoading(true);
+
+         const formData = new FormData();
+         formData.append('profile_photo', profilePhoto); // NOTE: Backend expects 'profile_photo' field name
+         
+         try {
+            const response = await fetch(`${API_BASE_URL}/user/profile-photo`, {
+                method: 'POST', // Use POST for photo upload endpoint
+                headers: { 'x-auth-token': token },
+                body: formData,
+            });
+            const data = await response.json();
+            
+            if (response.ok) {
+                setSuccess('Profile photo uploaded successfully!');
+                setProfilePhoto(null); 
+                await fetchUserProfile(token); 
+            } else {
+                setError(data.error || 'Failed to upload photo. Check file size/type.');
+            }
+         } catch (err) {
+             setError('A network error occurred during photo upload.');
+         } finally {
+             setLoading(false);
+         }
+    }
+    
     return (
         <div className="space-y-6">
             <h2 className="text-2xl font-bold text-slate-700">Account & Location Settings</h2>
-            <p className="text-gray-600">Update your email, contact details, and default service location.</p>
             
             {error && <ErrorMessage message={error}/>}
             {success && <SuccessMessage message={success}/>}
             
-            <form onSubmit={handleSubmit} className="space-y-6 bg-gray-50 p-6 rounded-xl border max-w-2xl">
-                {/* FIX: Applied DARK_CYAN_TEXT_CLASS */}
+            {/* PROFILE PHOTO FORM */}
+            <div className="space-y-4 bg-white p-6 rounded-xl border max-w-2xl">
+                 <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>Profile Photo</h3>
+                 <form onSubmit={handlePhotoSubmit} className="space-y-4">
+                     <div className="flex items-center space-x-4">
+                         <img 
+                            src={getPhotoUrl(user)} 
+                            alt="Current Profile" 
+                            className="w-20 h-20 rounded-full object-cover shadow-md border-2 border-white ring-2 ring-cyan-500" 
+                        />
+                        <label htmlFor="profile_photo_file" className="cursor-pointer bg-blue-100 text-blue-700 px-4 py-2 rounded-lg font-semibold hover:bg-blue-200 transition">
+                            {profilePhoto ? `Selected: ${profilePhoto.name.substring(0, 15)}...` : 'Change Photo (Max 5MB)'}
+                        </label>
+                        <input 
+                            id="profile_photo_file" 
+                            name="profile_photo_file" 
+                            type="file" 
+                            onChange={handleFileChange}
+                            className="hidden" 
+                            accept="image/*"
+                            disabled={loading}
+                        />
+                         <button type="submit" disabled={loading || !profilePhoto} className={`px-4 py-2 text-sm bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition disabled:bg-gray-400`}>
+                             {loading ? 'Uploading...' : 'Save Photo'}
+                         </button>
+                     </div>
+                 </form>
+            </div>
+
+            {/* DETAIL UPDATE FORM */}
+            <form onSubmit={handleDetailSubmit} className="space-y-6 bg-gray-50 p-6 rounded-xl border max-w-2xl">
                 <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>Account Details</h3>
                 <div>
                     <label htmlFor="email" className="block text-sm font-semibold text-gray-700">Email Address (Login)</label>
@@ -1235,7 +943,6 @@ const CustomerProfileManagement = () => {
                     />
                 </div>
 
-                {/* FIX: Applied DARK_CYAN_TEXT_CLASS */}
                 <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2 pt-4`}>Personal Details</h3>
                 <div className="grid md:grid-cols-2 gap-4">
                     <div>
@@ -1244,7 +951,7 @@ const CustomerProfileManagement = () => {
                             id="full_name" 
                             name="full_name" 
                             type="text" 
-                            value={profileData.full_name} // FIX: Ensures value is pulled from state, which defaults to empty string
+                            value={profileData.full_name} 
                             onChange={handleChange} 
                             className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" 
                         />
@@ -1255,7 +962,6 @@ const CustomerProfileManagement = () => {
                     </div>
                 </div>
                 
-                {/* FIX: Applied DARK_CYAN_TEXT_CLASS */}
                 <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2 pt-4`}>Default Location</h3>
                  <div>
                     <label htmlFor="address_line_1" className="block text-sm font-semibold text-gray-700">Address Line 1</label>
@@ -1276,12 +982,10 @@ const CustomerProfileManagement = () => {
                     </div>
                 </div>
 
-                {/* FIX: Applied DARK_CYAN_TEXT_CLASS */}
                 <p className="text-sm text-gray-500">Your Role: <span className={`font-semibold ${DARK_CYAN_TEXT_CLASS}`}>{user?.role?.toUpperCase()}</span></p>
                 
-                {/* FIX: Applied DARK_CYAN_CLASS and DARK_CYAN_HOVER_CLASS */}
                 <button type="submit" disabled={loading} className={`w-full ${DARK_CYAN_CLASS} text-white font-bold py-3 rounded-lg ${DARK_CYAN_HOVER_CLASS} transition shadow-md disabled:bg-gray-400`}>
-                    {loading ? 'Saving...' : 'Update Profile'}
+                    {loading ? 'Saving...' : 'Update Profile Details'}
                 </button>
             </form>
         </div>
@@ -1291,11 +995,15 @@ const CustomerProfileManagement = () => {
 const CustomerWallet = ({ fetchBookings }) => {
     const { token, user } = useAuth();
     const [balance, setBalance] = useState(0);
-    const [depositAmount, setDepositAmount] = useState('');
     const [loading, setLoading] = useState(true);
+    
+    // Deposit Request State
+    const [depositAmount, setDepositAmount] = useState('');
+    const [transactionReference, setTransactionReference] = useState('');
+    const [screenshotFile, setScreenshotFile] = useState(null);
     const [depositLoading, setDepositLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
+    const [depositError, setDepositError] = useState('');
+    const [depositSuccess, setDepositSuccess] = useState('');
 
     const fetchWallet = useCallback(async () => {
         if (!token) return;
@@ -1305,11 +1013,9 @@ const CustomerWallet = ({ fetchBookings }) => {
             if (res.ok) {
                 const data = await res.json();
                 setBalance(data.balance);
-            } else {
-                setError('Failed to fetch wallet data.');
-            }
+            } 
         } catch (err) {
-            setError('Network error fetching wallet.');
+            console.error('Network error fetching wallet.');
         } finally {
             setLoading(false);
         }
@@ -1319,35 +1025,47 @@ const CustomerWallet = ({ fetchBookings }) => {
         fetchWallet();
     }, [fetchWallet]);
     
-    const handleDeposit = async (e) => {
+    const handleDepositRequest = async (e) => {
         e.preventDefault();
         setDepositLoading(true);
-        setError(''); setSuccess('');
+        setDepositError(''); setDepositSuccess('');
         const amount = parseFloat(depositAmount);
 
-        if (isNaN(amount) || amount <= 0) {
-            setError('Please enter a valid amount.');
+        if (isNaN(amount) || amount <= 1) {
+            setDepositError('Deposit amount must be more than ₹1.');
+            setDepositLoading(false);
+            return;
+        }
+        if (!screenshotFile) {
+            setDepositError('Please upload a screenshot of your payment.');
             setDepositLoading(false);
             return;
         }
 
+        const formData = new FormData();
+        formData.append('amount', amount);
+        formData.append('transaction_reference', transactionReference);
+        formData.append('screenshot_file', screenshotFile); // NOTE: Backend expects 'screenshot_file' field name
+
         try {
-            const response = await fetch(`${API_BASE_URL}/customer/wallet/deposit`, {
+            // FIX: Corrected API path
+            const response = await fetch(`${API_BASE_URL}/customer/wallet/deposit-request`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-                body: JSON.stringify({ amount }),
+                headers: { 'x-auth-token': token },
+                body: formData,
             });
             const data = await response.json();
             
             if (response.ok) {
-                setSuccess(data.message);
+                setDepositSuccess(data.message);
                 setDepositAmount('');
-                await fetchWallet();
+                setTransactionReference('');
+                setScreenshotFile(null);
             } else {
-                setError(data.error || 'Deposit failed.');
+                setDepositError(data.error || 'Deposit request failed.');
             }
         } catch (err) {
-            setError('Network error during deposit.');
+            setDepositError('Network error during deposit request.');
         } finally {
             setDepositLoading(false);
         }
@@ -1358,7 +1076,6 @@ const CustomerWallet = ({ fetchBookings }) => {
         <div className="space-y-6">
             <h2 className="text-2xl font-bold text-slate-700">My Wallet</h2>
             
-            {/* FIX: Applied DARK_CYAN_CLASS */}
             <div className={`${DARK_CYAN_CLASS} text-white p-6 rounded-xl shadow-lg border-2 border-cyan-800 flex justify-between items-center`}>
                 <p className="text-sm font-medium opacity-90">Current Balance</p>
                 {loading ? <p className="text-2xl font-extrabold">Loading...</p> : (
@@ -1366,177 +1083,63 @@ const CustomerWallet = ({ fetchBookings }) => {
                 )}
             </div>
             
-            <div className="bg-gray-50 p-6 rounded-xl border max-w-2xl">
-                {/* FIX: Applied DARK_CYAN_TEXT_CLASS */}
-                <h3 className={`text-xl font-semibold ${DARK_CYAN_TEXT_CLASS} mb-4 border-b pb-2`}>Add Funds (Bank Transfer Mock)</h3>
-                {error && <ErrorMessage message={error}/>}
-                {success && <SuccessMessage message={success}/>}
-                <p className="text-sm text-gray-600 mb-4">Add money to your wallet to make payments to service providers after job completion. This is a mock deposit.</p>
-                <form onSubmit={handleDeposit} className="flex space-x-3">
-                    <input 
-                        type="number" 
-                        step="0.01" 
-                        value={depositAmount}
-                        onChange={(e) => setDepositAmount(e.target.value)}
-                        required
-                        placeholder={`${CURRENCY_SYMBOL} Amount`}
-                        className="flex-grow px-4 py-2 border border-gray-300 rounded-lg focus:ring-cyan-500 focus:border-cyan-500"
-                        disabled={depositLoading}
-                    />
-                    <button type="submit" disabled={depositLoading} className="bg-green-600 text-white font-bold px-6 py-2 rounded-lg hover:bg-green-700 transition disabled:bg-gray-400">
-                        {depositLoading ? 'Depositing...' : 'Deposit'}
-                    </button>
-                </form>
+            <div className="bg-gray-50 p-6 rounded-xl border max-w-3xl">
+                <h3 className={`text-xl font-semibold ${DARK_CYAN_TEXT_CLASS} mb-4 border-b pb-2`}>Request Wallet Top-Up (Admin-Verified)</h3>
+                
+                <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-6 mb-6">
+                    <div className="md:w-1/2 text-center bg-white p-4 rounded-lg shadow-inner">
+                        <p className="font-bold text-lg mb-2">Step 1: Pay to QR Code</p>
+                        <img 
+                            src={MOCK_UPI_QR_CODE_URL} 
+                            alt="Mock UPI QR Code" 
+                            className="w-40 h-40 mx-auto object-contain border-4 border-gray-200 rounded-lg mb-2" 
+                        />
+                        <p className="text-sm text-gray-600">Scan this code using any UPI App (PhonePe, Google Pay, etc.) and complete your payment.</p>
+                    </div>
+                    <div className="md:w-1/2">
+                        <p className="font-bold text-lg mb-2">Step 2: Submit Proof to Admin</p>
+                        {depositError && <ErrorMessage message={depositError}/>}
+                        {depositSuccess && <SuccessMessage message={depositSuccess}/>}
+                        <form onSubmit={handleDepositRequest} className="space-y-3">
+                            <input 
+                                type="number" 
+                                step="0.01" 
+                                value={depositAmount}
+                                onChange={(e) => setDepositAmount(e.target.value)}
+                                required
+                                placeholder={`${CURRENCY_SYMBOL} Amount Paid`}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                disabled={depositLoading}
+                            />
+                            <input 
+                                type="text" 
+                                value={transactionReference}
+                                onChange={(e) => setTransactionReference(e.target.value)}
+                                required
+                                placeholder="UPI/Bank Transaction Reference"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                disabled={depositLoading}
+                            />
+                            <label className="block text-sm font-semibold text-gray-700 pt-1">
+                                Upload Screenshot Proof (Required)
+                            </label>
+                            <input 
+                                type="file"
+                                onChange={(e) => setScreenshotFile(e.target.files[0])}
+                                required={!screenshotFile}
+                                className="w-full border p-2 rounded-lg bg-white"
+                                accept="image/*"
+                                disabled={depositLoading}
+                            />
+                            <button type="submit" disabled={depositLoading} className={`w-full bg-blue-600 text-white font-bold px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400`}>
+                                {depositLoading ? 'Submitting Request...' : 'Submit Deposit Request'}
+                            </button>
+                            <p className="text-xs text-red-500 pt-1">Requests are manually reviewed by Admin. Funds will be credited within 24 hours of submission.</p>
+                        </form>
+                    </div>
+                </div>
             </div>
         </div>
-    );
-};
-
-
-const CustomerFindServices = ({ setPage }) => (
-    <div className="space-y-6">
-        <h2 className="text-2xl font-bold text-slate-700">Find New Services</h2>
-        <p className="text-gray-600">Need help with a home repair, maintenance, or consultation? Find trusted local professionals here.</p>
-        
-        <div className="bg-blue-50 p-6 rounded-xl border border-blue-200 flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
-            <p className="text-lg font-semibold text-blue-800">Explore all categories now!</p>
-            <button 
-                onClick={() => setPage('allServices')}
-                className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 transition shadow-md w-full sm:w-auto"
-            >
-                Browse Services
-            </button>
-        </div>
-    </div>
-);
-
-
-const CustomerBookingHistory = () => {
-    const { token, user } = useAuth();
-    const [bookings, setBookings] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [activeModal, setActiveModal] = useState(null);
-    const [selectedBooking, setSelectedBooking] = useState(null);
-    
-    const fetchBookings = useCallback(async () => {
-        if (!token || user?.role !== 'customer') return;
-        setLoading(true);
-        setError('');
-        try {
-            const res = await fetch(`${API_BASE_URL}/customer/bookings`, { 
-                headers: { 'x-auth-token': token },
-            });
-            
-            if (!res.ok) {
-                 const errorText = await res.json();
-                 throw new Error(errorText.error || `Failed to fetch bookings. Status: ${res.status}`);
-            }
-            
-            const data = await res.json();
-            setBookings(data.bookings || []);
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    }, [token, user]);
-
-    useEffect(() => {
-        fetchBookings();
-    }, [fetchBookings]);
-    
-    const handleReviewModalOpen = (booking) => {
-        setSelectedBooking(booking);
-        setActiveModal('review');
-    };
-    
-    const handleChatModalOpen = (booking) => {
-        setSelectedBooking(booking);
-        setActiveModal('chat');
-    };
-    
-    const handlePriceConfirmationOpen = (booking) => {
-        setSelectedBooking(booking);
-        setActiveModal('confirmPrice');
-    };
-
-
-    return (
-        <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-slate-700">Your Booking History</h2>
-            <p className="text-gray-600">Track the status of your requested services and access chat and payment options.</p>
-            
-            {error && <ErrorMessage message={error}/>}
-            {loading && <Spinner />}
-            
-            {!loading && bookings.length === 0 && <p className="text-center text-gray-500 bg-gray-100 p-10 rounded-xl shadow-inner">
-                You haven't placed any bookings yet. Find a service now!
-            </p>}
-
-            {bookings.map(booking => (
-                <BookingCard 
-                    key={booking.id} 
-                    booking={booking} 
-                    isCustomer={true} 
-                    handleAction={() => {}}
-                    onReviewModalOpen={handleReviewModalOpen}
-                    onChatModalOpen={handleChatModalOpen}
-                    onPriceConfirmationOpen={handlePriceConfirmationOpen} 
-                />
-            ))}
-            
-            {activeModal === 'review' && selectedBooking && (
-                <ReviewAndPaymentModal 
-                    booking={selectedBooking} 
-                    onClose={() => setActiveModal(null)} 
-                    onCompleted={fetchBookings} 
-                />
-            )}
-            
-            {activeModal === 'chat' && selectedBooking && (
-                <ChatComponent
-                    booking={selectedBooking}
-                    onClose={() => setActiveModal(null)} 
-                    isCustomer={true}
-                />
-            )}
-            
-            {activeModal === 'confirmPrice' && selectedBooking && (
-                <PriceConfirmationModal
-                    booking={selectedBooking}
-                    onClose={() => setActiveModal(null)}
-                    onConfirmed={fetchBookings} 
-                />
-            )}
-        </div>
-    );
-};
-
-
-const CustomerDashboard = ({ setPage }) => {
-    const [activeTab, setActiveTab] = useState('bookings');
-    const navItems = [
-        { tab: 'bookings', label: 'My Bookings' },
-        { tab: 'wallet', label: 'My Wallet' }, 
-        { tab: 'findServices', label: 'Find a Service' }, 
-        { tab: 'profile', label: 'My Profile' },
-    ];
-    
-    const renderTab = () => {
-        switch (activeTab) {
-            case 'bookings': return <CustomerBookingHistory />;
-            case 'wallet': return <CustomerWallet />;
-            case 'profile': return <CustomerProfileManagement />;
-            case 'findServices': return <CustomerFindServices setPage={setPage} />;
-            default: return <CustomerBookingHistory />;
-        }
-    }
-    
-    return (
-        <DashboardLayout navItems={navItems} activeTab={activeTab} setActiveTab={setActiveTab} title="Customer Dashboard">
-            {renderTab()}
-        </DashboardLayout>
     );
 };
 
@@ -1546,7 +1149,10 @@ const ProviderWalletAndEarnings = () => {
     const [analytics, setAnalytics] = useState({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    
+    // Withdrawal Request State
     const [withdrawAmount, setWithdrawAmount] = useState('');
+    const [transactionReference, setTransactionReference] = useState(''); // UPI ID / Bank Details
     const [withdrawLoading, setWithdrawLoading] = useState(false);
     const [withdrawError, setWithdrawError] = useState('');
     const [withdrawSuccess, setWithdrawSuccess] = useState('');
@@ -1577,35 +1183,47 @@ const ProviderWalletAndEarnings = () => {
         fetchAnalytics();
     }, [fetchAnalytics]);
     
-    const handleWithdraw = async (e) => {
+    const handleWithdrawRequest = async (e) => {
         e.preventDefault();
         setWithdrawLoading(true);
         setWithdrawError(''); setWithdrawSuccess('');
         const amount = parseFloat(withdrawAmount);
 
-        if (isNaN(amount) || amount <= 0) {
-            setWithdrawError('Please enter a valid amount.');
+        if (isNaN(amount) || amount <= 100) {
+            setWithdrawError('Minimum withdrawal amount is ₹100.');
+            setWithdrawLoading(false);
+            return;
+        }
+        if (amount > analytics.wallet_balance) {
+             setWithdrawError('Insufficient wallet balance.');
+            setWithdrawLoading(false);
+            return;
+        }
+        if (!transactionReference) {
+             setWithdrawError('Payout UPI ID or Bank Details are required.');
             setWithdrawLoading(false);
             return;
         }
 
         try {
-            const response = await fetch(`${API_BASE_URL}/provider/wallet/withdraw`, {
+            // FIX: Corrected API path
+            const response = await fetch(`${API_BASE_URL}/provider/wallet/withdraw-request`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-                body: JSON.stringify({ amount }),
+                body: JSON.stringify({ amount, transaction_reference: transactionReference }),
             });
             const data = await response.json();
             
             if (response.ok) {
                 setWithdrawSuccess(data.message);
                 setWithdrawAmount('');
+                setTransactionReference(''); 
                 await fetchAnalytics(); 
             } else {
-                setWithdrawError(data.error || 'Withdrawal failed. Check balance.');
+                setWithdrawError(data.error || 'Withdrawal request failed.');
             }
         } catch (err) {
-            setWithdrawError('Network error during withdrawal.');
+            setWithdrawError('Network error during withdrawal request.');
         } finally {
             setWithdrawLoading(false);
         }
@@ -1620,7 +1238,6 @@ const ProviderWalletAndEarnings = () => {
             <h2 className="text-2xl font-bold text-slate-700">Your Payouts & Performance Analytics</h2>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
-                {/* FIX: Applied custom dark cyan color shade */}
                 <div className="bg-[#E0F7FA] text-[#008080] p-6 rounded-xl shadow-lg border border-[#B2EBF2]">
                     <p className="text-sm font-medium">Wallet Balance</p>
                     <h3 className="text-3xl font-extrabold mt-1">{CURRENCY_SYMBOL}{analytics.wallet_balance?.toFixed(2) || '0.00'}</h3>
@@ -1640,25 +1257,35 @@ const ProviderWalletAndEarnings = () => {
             </div>
             
              <div className="bg-gray-50 p-6 rounded-xl border max-w-2xl">
-                {/* FIX: Applied DARK_CYAN_TEXT_CLASS */}
-                <h3 className={`text-xl font-semibold ${DARK_CYAN_TEXT_CLASS} mb-4 border-b pb-2`}>Withdraw Funds (Bank Transfer Mock)</h3>
+                <h3 className={`text-xl font-semibold ${DARK_CYAN_TEXT_CLASS} mb-4 border-b pb-2`}>Request Withdrawal (Admin-Verified)</h3>
                 {withdrawError && <ErrorMessage message={withdrawError}/>}
                 {withdrawSuccess && <SuccessMessage message={withdrawSuccess}/>}
-                <p className="text-sm text-gray-600 mb-4">Transfer funds from your wallet to your linked bank account (mock transfer).</p>
-                <form onSubmit={handleWithdraw} className="flex space-x-3">
+                <p className="text-sm text-gray-600 mb-4">Transfer funds from your wallet to your linked UPI/Bank account. Minimum withdrawal is ₹100.</p>
+                <form onSubmit={handleWithdrawRequest} className="space-y-3">
                     <input 
                         type="number" 
                         step="0.01" 
                         value={withdrawAmount}
                         onChange={(e) => setWithdrawAmount(e.target.value)}
                         required
-                        placeholder={`${CURRENCY_SYMBOL} Amount`}
-                        className="flex-grow px-4 py-2 border border-gray-300 rounded-lg focus:ring-cyan-500 focus:border-cyan-500"
+                        placeholder={`${CURRENCY_SYMBOL} Amount to Withdraw (Max: ${CURRENCY_SYMBOL}${analytics.wallet_balance?.toFixed(2) || '0.00'})`}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                        disabled={withdrawLoading}
+                        max={analytics.wallet_balance}
+                    />
+                    <input 
+                        type="text" 
+                        value={transactionReference}
+                        onChange={(e) => setTransactionReference(e.target.value)}
+                        required
+                        placeholder="Your Payout UPI ID / Bank Details"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg"
                         disabled={withdrawLoading}
                     />
-                    <button type="submit" disabled={withdrawLoading} className="bg-red-600 text-white font-bold px-6 py-2 rounded-lg hover:bg-red-700 transition disabled:bg-gray-400">
-                        {withdrawLoading ? 'Processing...' : 'Withdraw'}
+                    <button type="submit" disabled={withdrawLoading} className="w-full bg-red-600 text-white font-bold px-6 py-3 rounded-lg hover:bg-red-700 transition disabled:bg-gray-400">
+                        {withdrawLoading ? 'Submitting Request...' : 'Submit Withdrawal Request'}
                     </button>
+                     <p className="text-xs text-red-500 pt-1">Requests are manually reviewed by Admin. Funds will be transferred within 24 hours of approval.</p>
                 </form>
             </div>
         </div>
@@ -1818,12 +1445,13 @@ const ProviderBookingRequests = () => {
 
 
 const ProviderProfileManagement = () => {
-    const { user, token } = useAuth();
+    const { user, token, fetchUserProfile } = useAuth();
     const [profile, setProfile] = useState(null);
     const [services, setServices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [profilePhoto, setProfilePhoto] = useState(null); 
 
     const fetchData = useCallback(async () => {
         if (!token || user?.role !== 'provider') {
@@ -1859,22 +1487,96 @@ const ProviderProfileManagement = () => {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+    
+    const handleFileChange = (e) => {
+        setProfilePhoto(e.target.files[0]);
+    };
 
-    const handleSubmit = async (e) => {
+    const handleAccountUpdate = async (e) => {
         e.preventDefault();
         setError(''); setSuccess('');
+        
+        // This logic handles email update only, photo upload uses a separate button/route
+        const email = e.target.email.value;
+        setLoading(true);
+
+        const dataToSend = { email: email };
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/user/profile`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                body: JSON.stringify(dataToSend),
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                setSuccess('Email updated successfully! Refreshing data...');
+                fetchUserProfile(token); 
+            } else {
+                setError(data.error || 'Failed to update email.');
+            }
+        } catch (err) {
+            setError('A network error occurred while submitting the email update.');
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    const handlePhotoSubmit = async (e) => {
+         e.preventDefault();
+         if (!profilePhoto) return;
+         setError(''); setSuccess(''); setLoading(true);
+
+         const formData = new FormData();
+         formData.append('profile_photo', profilePhoto); // NOTE: Backend expects 'profile_photo' field name
+         
+         try {
+            const response = await fetch(`${API_BASE_URL}/user/profile-photo`, {
+                method: 'POST', // Use POST for photo upload endpoint
+                headers: { 'x-auth-token': token },
+                body: formData,
+            });
+            const data = await response.json();
+            
+            if (response.ok) {
+                setSuccess('Profile photo uploaded successfully!');
+                setProfilePhoto(null); 
+                fetchUserProfile(token); 
+            } else {
+                setError(data.error || 'Failed to upload photo. Check file size/type.');
+            }
+         } catch (err) {
+             setError('A network error occurred during photo upload.');
+         } finally {
+             setLoading(false);
+         }
+    }
+
+
+    const handleProfileSubmit = async (e) => {
+        e.preventDefault();
+        setError(''); setSuccess('');
+        
+        // Use separate loading state for profile details to distinguish from photo/email loading
+        const profileLoading = true; 
+        setLoading(true); 
+
         const formData = new FormData(e.target);
         
         const serviceIds = formData.get('primary_service_id') ? [formData.get('primary_service_id')] : [];
         
         if (serviceIds.length === 0) {
             setError('Please select a primary service category.');
+            setLoading(false);
             return;
         }
         
         const profileData = {
             display_name: formData.get('display_name'),
             bio: formData.get('bio'),
+            payout_upi_id: formData.get('payout_upi_id'),
             location_lat: parseFloat(formData.get('location_lat')),
             location_lon: parseFloat(formData.get('location_lon')),
             service_radius_km: parseInt(formData.get('service_radius_km'), 10),
@@ -1894,32 +1596,77 @@ const ProviderProfileManagement = () => {
             const data = await response.json();
             
             if (response.ok) {
-                setSuccess('Profile updated successfully!');
+                setSuccess('Profile details updated successfully!');
                 fetchData(); // Refresh data
             } else {
                 setError(data.error || 'Failed to update profile.');
             }
         } catch (err) {
             setError('A network error occurred while submitting the update.');
+        } finally {
+            setLoading(false);
         }
     };
     
-    if (loading) return <Spinner />;
+    if (loading && !profile) return <Spinner />;
     if (error && !profile) return <ErrorMessage message={error} />;
-    if (!profile) return <ErrorMessage message="Provider profile data is missing. Please contact support or complete initial setup." />;
+    if (!profile) return <ErrorMessage message="Provider profile data is missing. Please complete initial setup." />;
 
     const currentServiceId = profile.service_ids && profile.service_ids.length > 0 
         ? profile.service_ids[0] 
         : (services[0]?.id || '');
     
     return (
-        <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-slate-700">Manage Your Public Profile</h2>
+        <div className="space-y-8">
+            <h2 className="text-2xl font-bold text-slate-700">Manage Your Public Profile & Payout Details</h2>
             
             {error && <ErrorMessage message={error}/>}
             {success && <SuccessMessage message={success}/>}
             
-            <form onSubmit={handleSubmit} className="space-y-6 bg-gray-50 p-6 rounded-xl border">
+             {/* Account/Photo Update Form */}
+            <div className="bg-gray-50 p-6 rounded-xl border max-w-2xl">
+                 <h3 className={`text-xl font-semibold ${DARK_CYAN_TEXT_CLASS} mb-4 border-b pb-2`}>Account & Photo</h3>
+                 
+                 {/* Photo Upload Form */}
+                 <form onSubmit={handlePhotoSubmit} className="space-y-4">
+                     <div className="flex items-center space-x-4">
+                        <img 
+                            src={getPhotoUrl(user)} 
+                            alt="Current Profile" 
+                            className="w-20 h-20 rounded-full object-cover shadow-md border-2 border-white ring-2 ring-cyan-500" 
+                        />
+                        <label htmlFor="profile_photo_file" className="cursor-pointer bg-blue-100 text-blue-700 px-4 py-2 rounded-lg font-semibold hover:bg-blue-200 transition">
+                            {profilePhoto ? `Selected: ${profilePhoto.name.substring(0, 15)}...` : 'Change Photo (Max 5MB)'}
+                        </label>
+                        <input 
+                            id="profile_photo_file" 
+                            name="profile_photo_file" 
+                            type="file" 
+                            onChange={handleFileChange}
+                            className="hidden" 
+                            accept="image/*"
+                        />
+                        <button type="submit" disabled={loading || !profilePhoto} className={`px-4 py-2 text-sm bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition disabled:bg-gray-400`}>
+                             {loading ? 'Uploading...' : 'Save Photo'}
+                         </button>
+                     </div>
+                 </form>
+
+                 {/* Email Update Form */}
+                 <form onSubmit={handleAccountUpdate} className="space-y-4 pt-4">
+                     <div>
+                        <label htmlFor="email" className="block text-sm font-semibold text-gray-700">Email Address (Login)</label>
+                        <input id="email" name="email" type="email" defaultValue={user?.email || ''} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
+                    </div>
+                    <button type="submit" disabled={loading} className={`w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition shadow-md`}>
+                        Update Account Email
+                    </button>
+                 </form>
+            </div>
+            
+            {/* Profile Details Form */}
+            <form onSubmit={handleProfileSubmit} className="space-y-6 bg-gray-50 p-6 rounded-xl border">
+                 <h3 className={`text-xl font-semibold ${DARK_CYAN_TEXT_CLASS} mb-4 border-b pb-2`}>Public Profile Details</h3>
                 <div>
                     <label htmlFor="display_name" className="block text-sm font-semibold text-gray-700">Display Name</label>
                     <input id="display_name" name="display_name" type="text" defaultValue={profile.display_name} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
@@ -1936,6 +1683,12 @@ const ProviderProfileManagement = () => {
                 <div>
                     <label htmlFor="bio" className="block text-sm font-semibold text-gray-700">Short Bio / Expertise Summary</label>
                     <textarea id="bio" name="bio" rows="4" defaultValue={profile.bio} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" placeholder="Describe your services and experience (Max 250 chars)..."></textarea>
+                </div>
+                
+                <h3 className="text-lg font-bold text-slate-700 border-b pb-2">Payout Details (For Earnings)</h3>
+                <div>
+                    <label htmlFor="payout_upi_id" className="block text-sm font-semibold text-gray-700">Payout UPI ID</label>
+                    <input id="payout_upi_id" name="payout_upi_id" type="text" defaultValue={profile.payout_upi_id} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" placeholder="e.g., example@upi" />
                 </div>
                 
                 <h3 className="text-lg font-bold text-slate-700 border-b pb-2">Service Area</h3>
@@ -1955,7 +1708,7 @@ const ProviderProfileManagement = () => {
                 </div>
                 
                 <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition shadow-md">
-                    Save Profile Updates
+                    Save Profile Details
                 </button>
             </form>
         </div>
@@ -1963,8 +1716,507 @@ const ProviderProfileManagement = () => {
 };
 
 
-// --- General Page Components (Full code from previous response) ---
-const HomePage = ({ setPage, setSelectedService, setSearchParams }) => {
+// --- ADMIN DASHBOARD COMPONENTS (NEW & MODIFIED) ---
+
+const AdminTable = ({ title, headers, data, actionHandler, fetcher }) => {
+    // Helper to render the table structure
+    const getStatusClasses = (status) => {
+        switch (status) {
+            case 'pending': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+            case 'approved': return 'bg-green-100 text-green-800 border-green-300';
+            case 'rejected': return 'bg-red-100 text-red-800 border-red-300';
+            case 'closed': return 'bg-gray-200 text-gray-700 border-gray-400';
+            case 'Verified': return 'bg-green-100 text-green-800 border-green-300';
+            case 'Pending': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+            default: return 'bg-blue-100 text-blue-800 border-blue-300';
+        }
+    };
+
+    const isWalletRequestTable = title.includes('Requests');
+
+    return (
+        <div>
+            <h2 className="text-2xl font-semibold text-slate-800 mb-4">{title}</h2>
+            <button 
+                onClick={fetcher}
+                className={`mb-4 px-4 py-2 text-sm bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition`}
+            >
+                Refresh Data
+            </button>
+            <div className="overflow-x-auto border rounded-xl shadow-sm">
+                <table className="min-w-full bg-white">
+                    <thead className="bg-blue-50">
+                        <tr>
+                            {headers.map(header => <th key={header} className="py-3 px-6 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider border-b">{header}</th>)}
+                        </tr>
+                    </thead>
+                    <tbody className="text-gray-700 text-sm font-light divide-y divide-gray-200">
+                        {data.map((row, index) => (
+                            <tr key={index} className="hover:bg-gray-50">
+                                {row.map((cell, cellIndex) => {
+                                    const header = headers[cellIndex];
+                                    const cellText = String(cell);
+
+                                    if (header === 'Status' || header === 'Role' || header === 'Verification Status') {
+                                        return (
+                                             <td key={cellIndex} className="py-3 px-6 text-left whitespace-nowrap">
+                                                <span className={`text-xs font-semibold px-3 py-1 rounded-full border uppercase ${getStatusClasses(cellText)}`}>
+                                                    {cellText.replace('_', ' ')}
+                                                </span>
+                                            </td>
+                                        )
+                                    }
+                                    if (header === 'Actions' && actionHandler) {
+                                        const itemId = row[0];
+                                        const statusIndex = isWalletRequestTable ? 5 : 4; 
+                                        const status = String(row[statusIndex]).toLowerCase(); 
+                                        
+                                        if (title === "Provider Verification Queue") {
+                                            const isVerified = status === 'verified';
+                                            return (
+                                                <td key={cellIndex} className="py-3 px-6 text-left whitespace-nowrap space-x-2">
+                                                    <button 
+                                                        onClick={() => actionHandler(itemId, isVerified)} 
+                                                        className={`px-3 py-1 text-xs rounded-lg font-bold shadow-sm transition ${isVerified ? 'bg-yellow-500 text-white hover:bg-yellow-600' : 'bg-green-600 text-white hover:bg-green-700'} disabled:bg-gray-400`}
+                                                    >
+                                                        {isVerified ? 'Revoke' : 'Verify & Approve'}
+                                                    </button>
+                                                </td>
+                                            );
+                                        }
+
+                                        return (
+                                            <td key={cellIndex} className="py-3 px-6 text-left whitespace-nowrap space-x-2">
+                                                {status === 'pending' ? (
+                                                    <>
+                                                        <button onClick={() => actionHandler(itemId, 'approved')} className="px-3 py-1 text-xs rounded-lg font-bold shadow-sm transition bg-green-600 text-white hover:bg-green-700">Approve</button>
+                                                        <button onClick={() => actionHandler(itemId, 'rejected')} className="px-3 py-1 text-xs rounded-lg font-bold shadow-sm transition bg-red-500 text-white hover:bg-red-600">Reject</button>
+                                                    </>
+                                                ) : (
+                                                    <span className="text-gray-500 capitalize">{status}</span>
+                                                )}
+                                            </td>
+                                        );
+                                    }
+                                    // Handle Screenshot/URL display
+                                    if (header === 'Screenshot' && typeof cell === 'string' && cell.startsWith('http')) {
+                                         return (
+                                            <td key={cellIndex} className="py-3 px-6 text-left whitespace-nowrap">
+                                                <a href={cell} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-xs font-mono">View Proof</a>
+                                            </td>
+                                         );
+                                    }
+                                    return <td key={cellIndex} className="py-3 px-6 text-left whitespace-nowrap">{cell}</td>;
+                                })}
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+
+const AdminProfileManagement = () => {
+    const { user, token, fetchUserProfile } = useAuth();
+    const [profileData, setProfileData] = useState({ email: user?.email || '' });
+    const [profilePhoto, setProfilePhoto] = useState(null); 
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [loading, setLoading] = useState(false);
+    
+    useEffect(() => {
+        if (user) {
+            setProfileData({ email: user.email || '' });
+        }
+    }, [user]);
+
+    const handleFileChange = (e) => {
+        setProfilePhoto(e.target.files[0]);
+    };
+
+    const handleEmailSubmit = async (e) => {
+        e.preventDefault();
+        setError(''); setSuccess(''); setLoading(true);
+
+        const dataToSend = { email: profileData.email };
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/user/profile`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                body: JSON.stringify(dataToSend),
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                setSuccess('Admin email updated successfully! Refreshing data...');
+                await fetchUserProfile(token); 
+            } else {
+                setError(data.error || 'Failed to update profile. Email might be in use.');
+            }
+        } catch (err) {
+            setError('A network error occurred while submitting the email update.');
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    const handlePhotoSubmit = async (e) => {
+         e.preventDefault();
+         if (!profilePhoto) return;
+         setError(''); setSuccess(''); setLoading(true);
+
+         const formData = new FormData();
+         formData.append('profile_photo', profilePhoto); // NOTE: Backend expects 'profile_photo' field name
+         
+         try {
+            const response = await fetch(`${API_BASE_URL}/user/profile-photo`, {
+                method: 'POST', // Use POST for photo upload endpoint
+                headers: { 'x-auth-token': token },
+                body: formData,
+            });
+            const data = await response.json();
+            
+            if (response.ok) {
+                setSuccess('Profile photo uploaded successfully!');
+                setProfilePhoto(null); 
+                await fetchUserProfile(token); 
+            } else {
+                setError(data.error || 'Failed to upload photo. Check file size/type.');
+            }
+         } catch (err) {
+             setError('A network error occurred during photo upload.');
+         } finally {
+             setLoading(false);
+         }
+    }
+    
+    return (
+        <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-slate-700">Admin Account & Photo</h2>
+            <p className="text-gray-600">Update your email and profile photo.</p>
+            
+            {error && <ErrorMessage message={error}/>}
+            {success && <SuccessMessage message={success}/>}
+            
+            <div className="space-y-4 bg-white p-6 rounded-xl border max-w-2xl">
+                 <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>Profile Photo</h3>
+                 <form onSubmit={handlePhotoSubmit} className="space-y-4">
+                     <div className="flex items-center space-x-4">
+                         <img 
+                            src={getPhotoUrl(user)} 
+                            alt="Current Profile" 
+                            className="w-20 h-20 rounded-full object-cover shadow-md border-2 border-white ring-2 ring-cyan-500" 
+                        />
+                        <label htmlFor="admin_profile_photo_file" className="cursor-pointer bg-blue-100 text-blue-700 px-4 py-2 rounded-lg font-semibold hover:bg-blue-200 transition">
+                            {profilePhoto ? `Selected: ${profilePhoto.name.substring(0, 15)}...` : 'Change Photo (Max 5MB)'}
+                        </label>
+                        <input 
+                            id="admin_profile_photo_file" 
+                            name="admin_profile_photo_file" 
+                            type="file" 
+                            onChange={handleFileChange}
+                            className="hidden" 
+                            accept="image/*"
+                            disabled={loading}
+                        />
+                         <button type="submit" disabled={loading || !profilePhoto} className={`px-4 py-2 text-sm bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition disabled:bg-gray-400`}>
+                             {loading ? 'Uploading...' : 'Save Photo'}
+                         </button>
+                     </div>
+                 </form>
+
+                <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>Account Details</h3>
+                <form onSubmit={handleEmailSubmit} className="space-y-4">
+                    <div>
+                        <label htmlFor="email" className="block text-sm font-semibold text-gray-700">Email Address (Login)</label>
+                        <input 
+                            id="email" 
+                            name="email" 
+                            type="email" 
+                            value={profileData.email}
+                            onChange={(e) => setProfileData({...profileData, email: e.target.value})}
+                            required 
+                            className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm" 
+                            disabled={loading}
+                        />
+                    </div>
+                    
+                    <button type="submit" disabled={loading} className={`w-full ${DARK_CYAN_CLASS} text-white font-bold py-3 rounded-lg ${DARK_CYAN_HOVER_CLASS} transition shadow-md disabled:bg-gray-400`}>
+                        {loading ? 'Saving...' : 'Update Email'}
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+
+const AdminDashboard = () => {
+    const { token } = useAuth();
+    const [activeTab, setActiveTab] = useState('overview');
+    const [users, setUsers] = useState([]);
+    const [providers, setProviders] = useState([]);
+    const [bookings, setBookings] = useState([]);
+    const [walletRequests, setWalletRequests] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    const navItems = [
+        { tab: 'overview', label: 'Overview' },
+        { tab: 'profile', label: 'My Profile' },
+        { tab: 'walletRequests', label: 'Wallet Requests' },
+        { tab: 'providers', label: 'Provider Verification' },
+        { tab: 'bookings', label: 'All Bookings' },
+        { tab: 'users', label: 'Manage Users' },
+    ];
+
+    const fetchData = useCallback(async (endpoint, setter) => {
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch(`${API_BASE_URL}/admin/${endpoint}`, {
+                headers: { 'x-auth-token': token },
+            });
+            if (!res.ok) {
+                const errorText = await res.json();
+                throw new Error(errorText.error || 'Failed to fetch admin data. Check authorization.');
+            }
+            const data = await res.json();
+            setter(data);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [token]);
+
+    const handleProcessRequest = async (endpoint, requestId, status, fetcher) => {
+        setLoading(true);
+        const actionEndpoint = status === 'approved' ? 'approve' : 'reject';
+
+        try {
+            const res = await fetch(`${API_BASE_URL}/admin/${endpoint}/${requestId}/${actionEndpoint}`, {
+                method: 'PUT',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'x-auth-token': token,
+                },
+                body: JSON.stringify({ reason: `Request ${status} by Admin.` }), // Reason is used for rejection only
+            });
+            
+            if (!res.ok) {
+                const errorText = await res.json();
+                throw new Error(errorText.error || `Failed to ${status} request.`);
+            }
+            
+            // Refresh the relevant list
+            await fetcher();
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    // Combined Data Fetcher
+    const fetchAllData = useCallback(() => {
+        fetchData('users', setUsers);
+        fetchData('providers', setProviders);
+        fetchData('bookings', setBookings);
+        fetchData('wallet-requests', setWalletRequests);
+    }, [fetchData]);
+
+    useEffect(() => {
+        if (token) {
+            fetchAllData();
+        }
+    }, [token, fetchAllData]);
+
+
+    const handleVerify = (providerId, currentStatus) => handleProcessRequest('providers', providerId, !currentStatus ? 'approved' : 'rejected', () => fetchData('providers', setProviders));
+    const handleProcessWallet = (requestId, status) => handleProcessRequest('wallet-requests', requestId, status, () => fetchData('wallet-requests', setWalletRequests));
+
+    const formatDate = (dateString) => new Date(dateString).toLocaleDateString();
+    const formatDateTime = (dateString) => new Date(dateString).toLocaleString();
+
+
+    const userTableData = users.map(u => [
+        u.id, 
+        u.email, 
+        u.role,
+        u.status,
+        formatDate(u.created_at)
+    ]);
+
+    const providerTableData = providers.map(p => [
+        p.id, 
+        p.display_name, 
+        p.services_offered || 'N/A',
+        p.review_count,
+        p.is_verified ? 'Verified' : 'Pending',
+        p.id 
+    ]);
+
+    const bookingTableData = bookings.map(b => [
+        b.id,
+        b.provider_name,
+        b.customer_email,
+        formatDate(b.scheduled_at),
+        b.booking_status,
+        formatDate(b.created_at)
+    ]);
+    
+    const walletRequestTableData = walletRequests.map(r => [
+        r.id,
+        r.type === 'deposit' ? 'DEPOSIT' : 'WITHDRAWAL',
+        r.type === 'deposit' ? 'Customer' : 'Provider',
+        `${CURRENCY_SYMBOL}${parseFloat(r.amount).toFixed(2)}`,
+        r.type === 'deposit' ? r.transaction_reference : r.transaction_reference,
+        r.screenshot_url,
+        r.status,
+        formatDateTime(r.requested_at),
+        r.id
+    ]);
+
+
+    const renderTab = () => {
+        switch (activeTab) {
+            case 'overview': 
+                const pendingDeposits = walletRequests.filter(r => r.type === 'deposit' && r.status === 'pending').length;
+                const pendingWithdrawals = walletRequests.filter(r => r.type === 'withdrawal' && r.status === 'pending').length;
+                return (
+                    <div className="space-y-6">
+                        <h2 className="text-2xl font-semibold mb-4 text-slate-700">Key Platform Metrics</h2>
+                        <p className="text-gray-600">This data is fetched live from your backend APIs to provide an overview.</p>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 pt-4">
+                            <div className="bg-blue-600 text-white p-6 rounded-xl shadow-lg">
+                                <p className="text-sm font-medium opacity-80">Total Users</p>
+                                <h3 className="text-3xl font-extrabold mt-1">{users.length > 0 ? users.length : '0'}</h3>
+                            </div>
+                            <div className="bg-green-600 text-white p-6 rounded-xl shadow-lg">
+                                <p className="text-sm font-medium opacity-80">Total Bookings</p>
+                                <h3 className="text-3xl font-extrabold mt-1">{bookings.length > 0 ? bookings.length : '0'}</h3>
+                            </div>
+                            <div className="bg-yellow-600 text-white p-6 rounded-xl shadow-lg">
+                                <p className="text-sm font-medium opacity-80">Pending Deposits</p>
+                                <h3 className="text-3xl font-extrabold mt-1">{pendingDeposits}</h3>
+                            </div>
+                             <div className="bg-red-600 text-white p-6 rounded-xl shadow-lg">
+                                <p className="text-sm font-medium opacity-80">Pending Withdrawals</p>
+                                <h3 className="text-3xl font-extrabold mt-1">{pendingWithdrawals}</h3>
+                            </div>
+                        </div>
+                        {loading && <Spinner />}
+                        {error && <ErrorMessage message={error} />}
+                    </div>
+                );
+            case 'profile':
+                return <AdminProfileManagement />;
+            case 'walletRequests': 
+                return <AdminTable 
+                    title="All Wallet Requests" 
+                    headers={['ID', 'Type', 'Role', 'Amount', 'Ref/UPI ID', 'Screenshot', 'Status', 'Requested On', 'Actions']} 
+                    data={walletRequestTableData} 
+                    actionHandler={handleProcessWallet} 
+                    fetcher={() => fetchData('wallet-requests', setWalletRequests)}
+                />;
+            case 'providers': 
+                return <AdminTable 
+                    title="Provider Verification Queue" 
+                    headers={['ID', 'Name', 'Services', 'Reviews', 'Verification Status', 'Actions']} 
+                    data={providerTableData} 
+                    actionHandler={handleVerify} 
+                    fetcher={() => fetchData('providers', setProviders)}
+                />;
+            case 'bookings': 
+                return <AdminTable 
+                    title="All Platform Bookings" 
+                    headers={['ID', 'Provider', 'Customer Email', 'Scheduled', 'Status', 'Created On']} 
+                    data={bookingTableData} 
+                    fetcher={() => fetchData('bookings', setBookings)}
+                />;
+            case 'users': 
+                return <AdminTable 
+                    title="All Users" 
+                    headers={['ID', 'Email', 'Role', 'Status', 'Registered On']} 
+                    data={userTableData}
+                    fetcher={() => fetchData('users', setUsers)}
+                />;
+            default: return null;
+        }
+    }
+
+
+    return (
+        <DashboardLayout navItems={navItems} activeTab={activeTab} setActiveTab={setActiveTab} title="Platform Administration">
+            {renderTab()}
+        </DashboardLayout>
+    );
+};
+
+
+// --- MAIN APP COMPONENT (No logical changes needed here, only context wrapper) ---
+
+const AppContent = () => {
+    const [page, setPage] = useState('home');
+    const [pageData, setPageData] = useState(null);
+    const [selectedService, setSelectedService] = useState(null);
+    const [selectedProvider, setSelectedProvider] = useState(null);
+    const [searchParams, setSearchParams] = useState(null); 
+    
+    const { loading: authLoading } = useAuth(); 
+
+    const navigate = (pageName, data = null) => {
+        setPageData(data);
+        setPage(pageName);
+        window.scrollTo(0, 0); 
+    };
+
+    const renderPage = () => {
+        if (authLoading) {
+            return (
+                <div className="flex justify-center items-center h-screen w-full bg-gray-50">
+                    <Spinner />
+                    <p className="ml-4 text-xl font-semibold text-slate-700">Loading Application...</p>
+                </div>
+            );
+        }
+
+        switch (page) {
+            case 'home': return <HomePage setPage={navigate} setSelectedService={setSelectedService} setSearchParams={setSearchParams} setSelectedProvider={setSelectedProvider} />;
+            case 'allServices': return <AllServicesPage setPage={navigate} setSelectedService={setSelectedService} searchParams={searchParams} />;
+            case 'serviceProviders': return <ServiceProvidersPage service={selectedService} setPage={navigate} setSelectedProvider={setSelectedProvider} />;
+            case 'providerDetail': return <ProviderDetailPage provider={selectedProvider} service={selectedService} setPage={navigate} />; 
+            case 'about': return <AboutPage />;
+            case 'contact': return <ContactPage />;
+            case 'login': return <LoginPage setPage={navigate} />;
+            case 'register': return <RegisterPage setPage={navigate} />;
+            case 'forgotPassword': return <ForgotPasswordPage setPage={navigate} />; 
+            case 'providerSetup': return <ProviderSetupPage setPage={navigate} pageData={pageData} />;
+            case 'customerDashboard': return <CustomerDashboard setPage={navigate} />; 
+            case 'providerDashboard': return <ProviderDashboard />;
+            case 'adminDashboard': return <AdminDashboard />;
+            default: return <HomePage setPage={navigate} setSelectedService={setSelectedService} setSearchParams={setSearchParams} setSelectedProvider={setSelectedProvider} />;
+        }
+    };
+    
+    return (
+        <div className="flex flex-col min-h-screen font-sans bg-gray-50">
+            <Header setPage={navigate} />
+            <main className="flex-grow">
+                {renderPage()}
+            </main>
+            <Footer setPage={navigate} />
+        </div>
+    );
+};
+
+// --- SUPPORTING PAGE COMPONENTS (FROM PREVIOUS RESPONSES) ---
+
+const HomePage = ({ setPage, setSelectedService, setSearchParams, setSelectedProvider }) => {
   const [services, setServices] = useState([]);
   const [topProviders, setTopProviders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -2013,9 +2265,11 @@ const HomePage = ({ setPage, setSelectedService, setSearchParams }) => {
   };
 
   const handleProviderClick = (provider) => {
+    // Assuming provider.service_name is populated by backend join, or fallback to first service
     const service =
-      services.find((s) => provider.service_ids?.includes(s.id)) || services[0];
+      services.find((s) => provider.service_name === s.name) || services[0];
     setSelectedService(service);
+    setSelectedProvider(provider);
     setPage("providerDetail");
   };
 
@@ -2288,12 +2542,6 @@ const ProviderDetailPage = ({ provider, service, setPage }) => {
 
     if (!provider) return <ErrorMessage message="No provider selected." />;
     
-    const portfolio = [
-        "https://placehold.co/400x300/F0F4FF/4338CA?text=Portfolio+Image+1",
-        "https://placehold.co/400x300/E0E7FF/4338CA?text=Portfolio+Image+2",
-        "https://placehold.co/400x300/D1E0FF/4338CA?text=Portfolio+Image+3",
-    ];
-
     const handleRequestService = () => {
         if (!isAuthenticated || user?.role !== 'customer') {
             console.log("[UI Notification] Please log in as a customer to request a service.");
@@ -2317,13 +2565,13 @@ const ProviderDetailPage = ({ provider, service, setPage }) => {
                 {/* Header Section */}
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center border-b pb-6 mb-6">
                     <div className="flex items-center space-x-6">
+                        {/* Use actual profile photo URL */}
                         <img className="w-32 h-32 rounded-full object-cover shadow-xl border-4 border-white ring-2 ring-cyan-500" 
-                            src={`https://placehold.co/150x150/E0E7FF/4338CA?text=${provider.display_name.charAt(0)}`} 
+                            src={provider.profile_picture_url || `https://placehold.co/150x150/E0F2F1/008080?text=${provider.display_name.charAt(0)}`} 
                             alt={provider.display_name} 
                         />
                         <div>
                             <h1 className="text-3xl font-extrabold text-slate-800">{provider.display_name}</h1>
-                            {/* FIX: Applied DARK_CYAN_TEXT_CLASS */}
                             <p className={`text-lg ${DARK_CYAN_TEXT_CLASS} font-semibold mb-2`}>{mockServiceName}</p>
                             <div className="flex items-center space-x-2">
                                 <span className="bg-amber-100 text-amber-600 text-sm font-bold px-3 py-1 rounded-full flex items-center">
@@ -2338,7 +2586,6 @@ const ProviderDetailPage = ({ provider, service, setPage }) => {
                     {/* CTA Button */}
                     <button 
                         onClick={handleRequestService}
-                        // FIX: Applied DARK_CYAN_CLASS and DARK_CYAN_HOVER_CLASS
                         className={`mt-6 lg:mt-0 ${DARK_CYAN_CLASS} text-white text-lg font-bold px-8 py-3 rounded-lg ${DARK_CYAN_HOVER_CLASS} transition shadow-lg`}
                         disabled={user?.role === 'provider' || user?.role === 'admin'}
                     >
@@ -2706,11 +2953,18 @@ const ProviderSetupPage = ({ setPage, pageData }) => {
         const profileData = {
             display_name: e.target.display_name.value,
             bio: e.target.bio.value,
+            payout_upi_id: e.target.payout_upi_id.value, // New Required Field
             location_lat: parseFloat(e.target.lat.value), 
             location_lon: parseFloat(e.target.lon.value),
             service_radius_km: parseInt(e.target.radius.value, 10),
             service_ids: [pageData.primaryServiceId],
         };
+        
+        if (!profileData.payout_upi_id) {
+             setError('Payout UPI ID is required.');
+             setLoading(false);
+             return;
+        }
 
         try {
             const response = await fetch(`${API_BASE_URL}/provider/profile`, {
@@ -2742,6 +2996,10 @@ const ProviderSetupPage = ({ setPage, pageData }) => {
                 <div>
                     <label htmlFor="display_name" className="block text-sm font-semibold text-gray-700">Display Name (e.g., Rajesh Sharma, R.S. Electric)</label>
                     <input id="display_name" name="display_name" type="text" required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
+                </div>
+                <div>
+                    <label htmlFor="payout_upi_id" className="block text-sm font-semibold text-gray-700">Payout UPI ID (Required for Earnings)</label>
+                    <input id="payout_upi_id" name="payout_upi_id" type="text" required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" placeholder="e.g., example@upi" />
                 </div>
                 <div>
                     <label htmlFor="bio" className="block text-sm font-semibold text-gray-700">Short Bio / Expertise Summary</label>
@@ -2785,7 +3043,6 @@ const DashboardLayout = ({ children, navItems, activeTab, setActiveTab, title })
                                     <li key={item.tab} className="mb-1">
                                          <a
                                              onClick={() => setActiveTab(item.tab)}
-                                             // FIX: Applied DARK_CYAN_CLASS
                                              className={`block px-4 py-3 rounded-lg cursor-pointer transition-colors text-lg ${activeTab === item.tab ? `${DARK_CYAN_CLASS} text-white font-bold shadow-md` : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-700'}`}
                                          >
                                              {item.label}
@@ -2805,250 +3062,520 @@ const DashboardLayout = ({ children, navItems, activeTab, setActiveTab, title })
         </div>
     );
 };
-const AdminDashboard = () => {
-    const { token } = useAuth();
-    const [activeTab, setActiveTab] = useState('overview');
-    const [users, setUsers] = useState([]);
-    const [providers, setProviders] = useState([]);
+
+const CustomerFindServices = ({ setPage }) => (
+    <div className="space-y-6">
+        <h2 className="text-2xl font-bold text-slate-700">Find New Services</h2>
+        <p className="text-gray-600">Need help with a home repair, maintenance, or consultation? Find trusted local professionals here.</p>
+        
+        <div className="bg-blue-50 p-6 rounded-xl border border-blue-200 flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
+            <p className="text-lg font-semibold text-blue-800">Explore all categories now!</p>
+            <button 
+                onClick={() => setPage('allServices')}
+                className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 transition shadow-md w-full sm:w-auto"
+            >
+                Browse Services
+            </button>
+        </div>
+    </div>
+);
+
+
+const CustomerBookingHistory = () => {
+    const { token, user } = useAuth();
     const [bookings, setBookings] = useState([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-
-    const navItems = [
-        { tab: 'overview', label: 'Overview' },
-        { tab: 'users', label: 'Manage Users' },
-        { tab: 'providers', label: 'Provider Verification' },
-        { tab: 'bookings', label: 'All Bookings' },
-    ];
-
-    const fetchData = useCallback(async (endpoint, setter) => {
+    const [activeModal, setActiveModal] = useState(null);
+    const [selectedBooking, setSelectedBooking] = useState(null);
+    
+    const fetchBookings = useCallback(async () => {
+        if (!token || user?.role !== 'customer') return;
         setLoading(true);
         setError('');
         try {
-            const res = await fetch(`${API_BASE_URL}/admin/${endpoint}`, {
+            const res = await fetch(`${API_BASE_URL}/customer/bookings`, { 
                 headers: { 'x-auth-token': token },
             });
+            
             if (!res.ok) {
-                const errorText = await res.json();
-                throw new Error(errorText.error || 'Failed to fetch admin data. Check authorization.');
+                 const errorText = await res.json();
+                 throw new Error(errorText.error || `Failed to fetch bookings. Status: ${res.status}`);
             }
+            
             const data = await res.json();
-            setter(data);
+            setBookings(data.bookings || []);
         } catch (err) {
             setError(err.message);
         } finally {
             setLoading(false);
         }
-    }, [token]);
-
-    const handleVerify = async (providerId, currentStatus) => {
-        setLoading(true);
-        try {
-            const newStatus = !currentStatus;
-            const res = await fetch(`${API_BASE_URL}/admin/providers/${providerId}/verify`, {
-                method: 'PUT',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'x-auth-token': token,
-                },
-                body: JSON.stringify({ is_verified: newStatus }),
-            });
-            
-            if (!res.ok) {
-                const errorText = await res.json();
-                throw new Error(errorText.error || `Failed to ${newStatus ? 'verify' : 'un-verify'} provider.`);
-            }
-            
-            await fetchData('providers', setProviders);
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    };
+    }, [token, user]);
 
     useEffect(() => {
-        if (token) {
-            fetchData('users', setUsers);
-            fetchData('providers', setProviders);
-            fetchData('bookings', setBookings);
-        }
-    }, [token, fetchData]);
-
-    useEffect(() => {
-        if (token && activeTab === 'users') fetchData('users', setUsers);
-        if (token && activeTab === 'providers') fetchData('providers', setProviders);
-        if (token && activeTab === 'bookings') fetchData('bookings', setBookings);
-    }, [activeTab, token, fetchData]);
+        fetchBookings();
+    }, [fetchBookings]);
     
-    // Helper to render the table structure
-    const AdminTable = ({ title, headers, data, actionHandler }) => (
-        <div>
-            <h2 className="text-2xl font-semibold text-slate-800 mb-4">{title}</h2>
-            {loading && activeTab !== 'overview' && <Spinner />}
-            {error && <ErrorMessage message={error} />}
-            <div className="overflow-x-auto border rounded-xl shadow-sm">
-                <table className="min-w-full bg-white">
-                    <thead className="bg-blue-50">
-                        <tr>
-                            {headers.map(header => <th key={header} className="py-3 px-6 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider border-b">{header}</th>)}
-                        </tr>
-                    </thead>
-                    <tbody className="text-gray-700 text-sm font-light divide-y divide-gray-200">
-                        {data.map((row, index) => (
-                            <tr key={index} className="hover:bg-gray-50">
-                                {row.map((cell, cellIndex) => {
-                                    if (headers[cellIndex] === 'Actions' && actionHandler) {
-                                        const provider = providers.find(p => p.id === row[0]);
-                                        return (
-                                            <td key={cellIndex} className="py-3 px-6 text-left whitespace-nowrap">
-                                                <button 
-                                                    onClick={() => actionHandler(provider.id, provider.is_verified)} 
-                                                    disabled={loading}
-                                                    className={`px-3 py-1 text-xs rounded-lg font-bold shadow-sm transition ${provider.is_verified ? 'bg-yellow-500 text-white hover:bg-yellow-600' : 'bg-green-600 text-white hover:bg-green-700'} disabled:bg-gray-400`}
-                                                >
-                                                    {provider.is_verified ? 'Revoke' : 'Verify & Approve'}
-                                                </button>
-                                            </td>
-                                        );
-                                    }
-                                    return <td key={cellIndex} className="py-3 px-6 text-left whitespace-nowrap">{cell}</td>;
-                                })}
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-
-    const formatDate = (dateString) => new Date(dateString).toLocaleDateString();
-
-    const userTableData = users.map(u => [
-        u.id, 
-        u.email, 
-        <span key={u.id} className={`font-bold ${u.role === 'admin' ? 'text-red-500' : 'text-blue-500'}`}>{u.role.toUpperCase()}</span>,
-        u.status,
-        formatDate(u.created_at)
-    ]);
-
-    const providerTableData = providers.map(p => [
-        p.id, 
-        p.display_name, 
-        p.services_offered || 'N/A',
-        p.review_count,
-        <span key={p.id} className={`font-bold ${p.is_verified ? 'text-green-600' : 'text-yellow-600'}`}>{p.is_verified ? 'Verified' : 'Pending'}</span>,
-        p.id 
-    ]);
-
-    const bookingTableData = bookings.map(b => [
-        b.id,
-        b.provider_name,
-        b.customer_email,
-        formatDate(b.scheduled_at),
-        <span key={b.id} className={`font-bold uppercase text-xs px-2 py-1 rounded-full ${
-            b.booking_status === 'closed' ? 'bg-green-100 text-green-700' :
-            b.booking_status.includes('pending') ? 'bg-yellow-100 text-yellow-700' :
-            'bg-blue-100 text-blue-700'
-        }`}>{b.booking_status.replace('_', ' ')}</span>,
-        formatDate(b.created_at)
-    ]);
+    const handleReviewModalOpen = (booking) => {
+        setSelectedBooking(booking);
+        setActiveModal('review');
+    };
+    
+    const handleChatModalOpen = (booking) => {
+        setSelectedBooking(booking);
+        setActiveModal('chat');
+    };
+    
+    const handlePriceConfirmationOpen = (booking) => {
+        setSelectedBooking(booking);
+        setActiveModal('confirmPrice');
+    };
 
 
     return (
-        <DashboardLayout navItems={navItems} activeTab={activeTab} setActiveTab={setActiveTab} title="Platform Administration">
-            {activeTab === 'overview' && 
-                <div className="space-y-6">
-                    <h2 className="text-2xl font-semibold mb-4 text-slate-700">Key Platform Metrics</h2>
-                    <p className="text-gray-600">This data is fetched live from your backend APIs to provide an overview.</p>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
-                        <div className="bg-blue-600 text-white p-6 rounded-xl shadow-lg">
-                            <p className="text-sm font-medium opacity-80">Total Users</p>
-                            <h3 className="text-3xl font-extrabold mt-1">{users.length > 0 ? users.length : '0'}</h3>
-                        </div>
-                        <div className="bg-green-600 text-white p-6 rounded-xl shadow-lg">
-                            <p className="text-sm font-medium opacity-80">Total Bookings</p>
-                            <h3 className="text-3xl font-extrabold mt-1">{bookings.length > 0 ? bookings.length : '0'}</h3>
-                        </div>
-                        <div className="bg-yellow-600 text-white p-6 rounded-xl shadow-lg">
-                            <p className="text-sm font-medium opacity-80">Pending Verification</p>
-                            <h3 className="text-3xl font-extrabold mt-1">{providers.filter(p => !p.is_verified).length}</h3>
-                        </div>
-                    </div>
-                    {loading && <Spinner />}
-                    {error && <ErrorMessage message={error} />}
-                </div>
-            }
-            {activeTab === 'users' && <AdminTable title="All Users" headers={['ID', 'Email', 'Role', 'Status', 'Registered On']} data={userTableData} />}
-            {activeTab === 'providers' && <AdminTable 
-                title="Provider Verification Queue" 
-                headers={['ID', 'Name', 'Services', 'Reviews', 'Status', 'Actions']} 
-                data={providerTableData} 
-                actionHandler={handleVerify} 
-            />}
-            {activeTab === 'bookings' && <AdminTable title="All Platform Bookings" headers={['ID', 'Provider', 'Customer Email', 'Scheduled', 'Status', 'Created On']} data={bookingTableData} />}
+        <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-slate-700">Your Booking History</h2>
+            <p className="text-gray-600">Track the status of your requested services and access chat and payment options.</p>
+            
+            {error && <ErrorMessage message={error}/>}
+            {loading && <Spinner />}
+            
+            {!loading && bookings.length === 0 && <p className="text-center text-gray-500 bg-gray-100 p-10 rounded-xl shadow-inner">
+                You haven't placed any bookings yet. Find a service now!
+            </p>}
+
+            {bookings.map(booking => (
+                <BookingCard 
+                    key={booking.id} 
+                    booking={booking} 
+                    isCustomer={true} 
+                    handleAction={() => {}}
+                    onReviewModalOpen={handleReviewModalOpen}
+                    onChatModalOpen={handleChatModalOpen}
+                    onPriceConfirmationOpen={handlePriceConfirmationOpen} 
+                />
+            ))}
+            
+            {activeModal === 'review' && selectedBooking && (
+                <ReviewAndPaymentModal 
+                    booking={selectedBooking} 
+                    onClose={() => setActiveModal(null)} 
+                    onCompleted={fetchBookings} 
+                />
+            )}
+            
+            {activeModal === 'chat' && selectedBooking && (
+                <ChatComponent
+                    booking={selectedBooking}
+                    onClose={() => setActiveModal(null)} 
+                    isCustomer={true}
+                />
+            )}
+            
+            {activeModal === 'confirmPrice' && selectedBooking && (
+                <PriceConfirmationModal
+                    booking={selectedBooking}
+                    onClose={() => setActiveModal(null)}
+                    onConfirmed={fetchBookings} 
+                />
+            )}
+        </div>
+    );
+};
+const CustomerDashboard = ({ setPage }) => {
+    const [activeTab, setActiveTab] = useState('bookings');
+    const navItems = [
+        { tab: 'bookings', label: 'My Bookings' },
+        { tab: 'wallet', label: 'My Wallet' }, 
+        { tab: 'findServices', label: 'Find a Service' }, 
+        { tab: 'profile', label: 'My Profile' },
+    ];
+    
+    const renderTab = () => {
+        switch (activeTab) {
+            case 'bookings': return <CustomerBookingHistory />;
+            case 'wallet': return <CustomerWallet />;
+            case 'profile': return <CustomerProfileManagement />;
+            case 'findServices': return <CustomerFindServices setPage={setPage} />;
+            default: return <CustomerBookingHistory />;
+        }
+    }
+    
+    return (
+        <DashboardLayout navItems={navItems} activeTab={activeTab} setActiveTab={setActiveTab} title="Customer Dashboard">
+            {renderTab()}
         </DashboardLayout>
     );
 };
-
-
-// --- MAIN APP COMPONENT ---
-
-// FIX: New component wrapper to ensure useAuth is called within the context provider
-const AppContent = () => {
-    const [page, setPage] = useState('home');
-    const [pageData, setPageData] = useState(null);
-    const [selectedService, setSelectedService] = useState(null);
-    const [selectedProvider, setSelectedProvider] = useState(null);
-    const [searchParams, setSearchParams] = useState(null); 
+const SetPriceModal = ({ booking, onClose, onPriceSet }) => {
+    const { token } = useAuth();
+    const [amount, setAmount] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
     
-    // Now safe to call inside the Provider context
-    const { loading: authLoading } = useAuth(); 
+    const handleSetPrice = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
 
-    const navigate = (pageName, data = null) => {
-        setPageData(data);
-        setPage(pageName);
-        window.scrollTo(0, 0); 
-    };
-
-    const renderPage = () => {
-        if (authLoading) {
-            return (
-                <div className="flex justify-center items-center h-screen w-full bg-gray-50">
-                    <Spinner />
-                    <p className="ml-4 text-xl font-semibold text-slate-700">Loading Application...</p>
-                </div>
-            );
+        const finalAmount = parseFloat(amount);
+        if (isNaN(finalAmount) || finalAmount <= 0) {
+            setError('Please enter a valid positive amount.');
+            setLoading(false);
+            return;
         }
 
-        switch (page) {
-            case 'home': return <HomePage setPage={navigate} setSelectedService={setSelectedService} setSearchParams={setSearchParams} />;
-            case 'allServices': return <AllServicesPage setPage={navigate} setSelectedService={setSelectedService} searchParams={searchParams} />;
-            case 'serviceProviders': return <ServiceProvidersPage service={selectedService} setPage={navigate} setSelectedProvider={setSelectedProvider} />;
-            case 'providerDetail': return <ProviderDetailPage provider={selectedProvider} service={selectedService} setPage={navigate} />; 
-            case 'about': return <AboutPage />;
-            case 'contact': return <ContactPage />;
-            case 'login': return <LoginPage setPage={navigate} />;
-            case 'register': return <RegisterPage setPage={navigate} />;
-            case 'forgotPassword': return <ForgotPasswordPage setPage={navigate} />; 
-            case 'providerSetup': return <ProviderSetupPage setPage={navigate} pageData={pageData} />;
-            case 'customerDashboard': return <CustomerDashboard setPage={navigate} />; 
-            case 'providerDashboard': return <ProviderDashboard />;
-            case 'adminDashboard': return <AdminDashboard />;
-            default: return <HomePage setPage={navigate} setSelectedService={setSelectedService} setSearchParams={setSearchParams} />;
+        try {
+            // New logic: send 'accepted' status AND the amount. Backend sets status to 'awaiting_customer_confirmation'
+            const response = await fetch(`${API_BASE_URL}/bookings/${booking.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                body: JSON.stringify({ status: 'accepted', amount: finalAmount }),
+            });
+            const data = await response.json();
+
+            if (response.ok) {
+                setSuccess(`Price of ${CURRENCY_SYMBOL}${finalAmount.toFixed(2)} set. Customer notified for confirmation.`);
+                setTimeout(() => onPriceSet(), 2000);
+            } else {
+                setError(data.error || 'Failed to set price.');
+            }
+        } catch (err) {
+            setError('Network error occurred.');
+        } finally {
+            setLoading(false);
         }
     };
     
     return (
-        <div className="flex flex-col min-h-screen font-sans bg-gray-50">
-            <Header setPage={navigate} />
-            <main className="flex-grow">
-                {renderPage()}
-            </main>
-            <Footer setPage={navigate} />
-        </div>
+        <Modal title={`Set Price for Booking #${booking.id}`} onClose={onClose}>
+            <p className="text-gray-600 mb-4">Set the final service price. The customer must confirm this price before the booking status moves to 'Accepted'.</p>
+            {error && <ErrorMessage message={error} />}
+            {success && <SuccessMessage message={success} />}
+            <form onSubmit={handleSetPrice} className="space-y-4">
+                 <div>
+                    <label htmlFor="amount" className="block text-sm font-semibold text-gray-700">Final Price ({CURRENCY_SYMBOL})</label>
+                    <input 
+                        id="amount" 
+                        name="amount" 
+                        type="number" 
+                        step="0.01"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        required 
+                        className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg text-lg" 
+                        placeholder="e.g., 5000.00"
+                    />
+                </div>
+                <button type="submit" disabled={loading} className={`w-full ${DARK_CYAN_CLASS} text-white font-bold py-3 rounded-lg ${DARK_CYAN_HOVER_CLASS} transition disabled:bg-gray-400`}>
+                    {loading ? 'Submitting Price...' : 'Submit Price & Await Confirmation'}
+                </button>
+            </form>
+        </Modal>
     );
 };
+
+
+const BookingModal = ({ provider, service, onClose, onBooked, navigate }) => { 
+    const { token, user } = useAuth();
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+
+    const handleBookingSuccess = () => {
+        onClose();
+        navigate('customerDashboard');
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        
+        const bookingData = {
+            provider_id: provider.id,
+            service_id: service.id,
+            scheduled_at: e.target.scheduled_at.value,
+            address: e.target.address.value,
+            customer_notes: e.target.customer_notes.value,
+            service_description: e.target.service_description.value, 
+        };
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/bookings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                body: JSON.stringify(bookingData),
+            });
+            const data = await response.json();
+
+            if (response.ok) {
+                setSuccess(`Request sent! ID: ${data.booking_id}. Provider will review shortly.`);
+                setTimeout(() => handleBookingSuccess(), 2000); 
+            } else {
+                setError(data.error || 'Failed to send booking request.');
+            }
+        } catch (err) {
+            setError('Network error occurred during booking.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (!user) return <ErrorMessage message="You must be logged in to book a service." />;
+
+    // Use default location from user profile
+    const defaultLat = getProfileField(user, 'location_lat', 'N/A');
+    const defaultLon = getProfileField(user, 'location_lon', 'N/A');
+    const defaultAddress = getProfileField(user, 'address_line_1', '');
+    const defaultCity = getProfileField(user, 'city', '');
+    const fullAddress = defaultAddress + (defaultCity ? `, ${defaultCity}` : '');
+
+    return (
+        <Modal title={`Book ${service.name} with ${provider.display_name}`} onClose={onClose}>
+            {error && <ErrorMessage message={error} />}
+            {success && <SuccessMessage message={success} />}
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <p className="text-sm text-gray-600">**Important:** Your default location is set to ({defaultLat}, {defaultLon}). Update it in your dashboard if needed.</p>
+                <div>
+                    <label htmlFor="scheduled_at" className="block text-sm font-semibold text-gray-700">Scheduled Date & Time</label>
+                    <input id="scheduled_at" name="scheduled_at" type="datetime-local" required className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" />
+                </div>
+                <div>
+                    <label htmlFor="address" className="block text-sm font-semibold text-gray-700">Service Address</label>
+                    <input id="address" name="address" type="text" defaultValue={fullAddress} required className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" />
+                </div>
+                 <div>
+                    <label htmlFor="service_description" className="block text-sm font-semibold text-gray-700">Detailed Service Description (What do you need done?)</label>
+                    <textarea id="service_description" name="service_description" rows="3" required className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="e.g., Leaking faucet in the kitchen sink. Requires immediate attention."></textarea>
+                </div>
+                <div>
+                    <label htmlFor="customer_notes" className="block text-sm font-semibold text-gray-700">Additional Notes (Optional)</label>
+                    <textarea id="customer_notes" name="customer_notes" rows="2" className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
+                </div>
+                <button type="submit" disabled={loading} className={`w-full ${DARK_CYAN_CLASS} text-white font-bold py-3 rounded-lg ${DARK_CYAN_HOVER_CLASS} transition disabled:bg-gray-400`}>
+                    {loading ? 'Sending Request...' : 'Confirm & Send Request'}
+                </button>
+            </form>
+        </Modal>
+    );
+};
+
+const ReviewAndPaymentModal = ({ booking, onClose, onCompleted }) => {
+    const { token, user } = useAuth();
+    const [rating, setRating] = useState(0); 
+    const [comment, setComment] = useState('');
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [isPaid, setIsPaid] = useState(booking.booking_status === 'closed');
+    const [isReviewed, setIsReviewed] = useState(false); 
+    
+    useEffect(() => {
+        setIsPaid(booking.booking_status === 'closed');
+    }, [booking.booking_status]);
+
+    const handlePayment = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/payments`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                body: JSON.stringify({ booking_id: booking.id }), 
+            });
+            const data = await response.json();
+
+            if (response.ok) {
+                setSuccess(`Payment successful! Amount debited from your wallet. You can now optionally leave a review.`);
+                setIsPaid(true);
+                onCompleted(); 
+            } else {
+                setError(data.error || 'Payment failed. Check your wallet balance.');
+            }
+        } catch (err) {
+            setError('Network error during payment processing.');
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    const handleReviewSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        setSuccess('');
+
+        if (!isPaid) {
+            setError('Please complete the payment first before submitting a review.');
+            setLoading(false);
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/reviews`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                body: JSON.stringify({ 
+                    booking_id: booking.id, 
+                    rating: rating, 
+                    comment: comment 
+                }),
+            });
+            const data = await response.json();
+            
+            if (response.ok) {
+                setSuccess(data.message);
+                setIsReviewed(true);
+                onCompleted(); 
+            } else {
+                setError(data.error || 'Review submission failed. This booking may already be reviewed.');
+            }
+        } catch (err) {
+            setError('Network error during review submission.');
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    // Star rating component for re-use
+    const StarRating = () => (
+        <div className="flex justify-center space-x-1">
+            {[1, 2, 3, 4, 5].map((star) => (
+                <span 
+                    key={star} 
+                    onClick={() => setRating(star)}
+                    className={`cursor-pointer text-3xl transition ${star <= rating ? 'text-amber-400' : 'text-gray-300 hover:text-amber-300'}`}
+                >
+                    &#9733;
+                </span>
+            ))}
+        </div>
+    );
+    
+    const isPaymentPending = booking.booking_status === 'completed' && !isPaid;
+    const isReadyToReview = isPaid && !isReviewed;
+
+    return (
+        <Modal title={`Payment & Review for Booking #${booking.id}`} onClose={onClose}>
+            {error && <ErrorMessage message={error} />}
+            {success && <SuccessMessage message={success} />}
+
+            {/* --- Payment Section (Only visible if not yet paid) --- */}
+            {isPaymentPending && (
+                <div className="bg-red-50 p-4 rounded-lg mb-4 border border-red-200">
+                    <h3 className="text-xl font-bold text-red-700 mb-3">1. Complete Payment (Required)</h3>
+                    <p className="mb-3 text-gray-700">
+                        Final Service Fee: **{CURRENCY_SYMBOL}{parseFloat(booking.amount || 0).toFixed(2)}**
+                    </p>
+                    <button onClick={handlePayment} disabled={loading} className="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition disabled:bg-gray-400">
+                        {loading ? 'Processing...' : `Pay ${CURRENCY_SYMBOL}${parseFloat(booking.amount || 0).toFixed(2)} from Wallet`}
+                    </button>
+                </div>
+            )}
+            
+            {/* --- Review Section (Only visible after successful payment or if already paid) --- */}
+            {isReadyToReview && (
+                <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                    <h3 className="text-xl font-bold text-amber-700 mb-3">2. Optional Review</h3>
+                    <form onSubmit={handleReviewSubmit} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2 text-center">Your Rating</label>
+                            <StarRating />
+                            <p className="text-center text-sm text-gray-500 mt-1">({rating} out of 5)</p>
+                        </div>
+                        <div>
+                            <label htmlFor="comment" className="block text-sm font-semibold text-gray-700">Comment (Optional)</label>
+                            <textarea id="comment" name="comment" rows="3" value={comment} onChange={(e) => setComment(e.target.value)} className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="Share your experience..."></textarea>
+                        </div>
+                        <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400">
+                            {loading ? 'Submitting...' : 'Submit Review (Optional)'}
+                        </button>
+                    </form>
+                </div>
+            )}
+            
+            {booking.booking_status === 'closed' && isReviewed && (
+                <SuccessMessage message="Review already submitted for this booking." />
+            )}
+            
+            <div className="mt-4 text-right">
+                <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700 font-medium">Close</button>
+            </div>
+
+        </Modal>
+    );
+};
+
+const PriceConfirmationModal = ({ booking, onClose, onConfirmed }) => {
+    const { token } = useAuth();
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+
+    const handleConfirm = async (accepted) => {
+        setLoading(true);
+        setError('');
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/bookings/${booking.id}/confirm-price`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                body: JSON.stringify({ accepted }),
+            });
+            const data = await response.json();
+
+            if (response.ok) {
+                setSuccess(data.message);
+                setTimeout(() => onConfirmed(), 2000); 
+            } else {
+                setError(data.error || 'Failed to process confirmation.');
+            }
+        } catch (err) {
+            setError('Network error occurred.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <Modal title={`Confirm Price for Booking #${booking.id}`} onClose={onClose}>
+            {error && <ErrorMessage message={error} />}
+            {success && <SuccessMessage message={success} />}
+            
+            <div className="space-y-4">
+                <p className="text-lg text-slate-800 font-semibold">
+                    Provider's Quoted Price: 
+                    <span className="text-green-600 ml-2 text-2xl font-bold">{CURRENCY_SYMBOL}{parseFloat(booking.amount || 0).toFixed(2)}</span>
+                </p>
+                <p className="text-gray-600">
+                    If you accept, the service will be officially **Accepted**, and the chat will open for coordination. If you reject, the booking will be **Rejected** and cancelled.
+                </p>
+                
+                <div className="flex space-x-4 pt-4">
+                    <button 
+                        onClick={() => handleConfirm(true)} 
+                        disabled={loading}
+                        className="flex-1 bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition disabled:bg-gray-400"
+                    >
+                        {loading ? 'Confirming...' : 'Accept Price'}
+                    </button>
+                    <button 
+                        onClick={() => handleConfirm(false)} 
+                        disabled={loading}
+                        className="flex-1 bg-red-500 text-white font-bold py-3 rounded-lg hover:bg-red-600 transition disabled:bg-gray-400"
+                    >
+                        Reject Price
+                    </button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
 
 export default function App() {
     return (

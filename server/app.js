@@ -3,7 +3,8 @@ const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
-const multer = require('multer'); // NEW: For file uploads
+const multer = require('multer'); 
+const path = require('path'); 
 const nodemailer = require('nodemailer'); 
 require('dotenv').config();
 
@@ -20,12 +21,37 @@ app.use(cors({
 
 app.use(express.json());
 
-// --- MULTER CONFIGURATION (For chat file uploads) ---
-// Using memory storage for simplicity (not recommended for production; use disk storage or cloud storage)
-const upload = multer({ 
-    dest: 'uploads/', // Temporary destination
-    limits: { fileSize: 5 * 1024 * 1024 } // 5MB file size limit
+// --- STATIC FILES / FILE UPLOAD CONFIGURATION ---
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, 'uploads/');
+    },
+    filename: function (req, file, cb) {
+        // Use user ID and a timestamp to ensure unique names
+        const ext = path.extname(file.originalname);
+        // Ensure req.user.id exists before using it, fallback to 'public' if not authed yet
+        const userId = req.user?.id || 'public'; 
+        cb(null, `${userId}-${Date.now()}${ext}`);
+    }
 });
+
+const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+    fileFilter: (req, file, cb) => {
+        // Check mime type for security
+        if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf') {
+            cb(null, true);
+        } else {
+            cb(null, false);
+            return cb(new Error('Only images and PDF files are allowed!'));
+        }
+    }
+});
+
+// Serve files from the 'uploads' directory statically
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// ------------------------------------------------------------------------
 
 // --- DATABASE CONFIGURATION ---
 const pool = new Pool({
@@ -71,7 +97,7 @@ const sendEmail = async (to, subject, html) => {
         console.log('Message sent: %s', info.messageId);
     } catch (error) {
         console.error('Nodemailer Error: Failed to send email to %s', to, error.message);
-        throw error; // Re-throw the error
+        // Do not re-throw error in this version to prevent app from crashing on failed email notification
     }
 };
 
@@ -137,7 +163,8 @@ app.get('/api/v1/providers', async (req, res) => {
     
     try {
         let query = `
-            SELECT p.*, s.name AS service_name FROM providers p
+            SELECT p.*, u.profile_picture_url, s.name AS service_name FROM providers p
+            JOIN users u ON u.id = p.user_id
             LEFT JOIN provider_services ps ON p.id = ps.provider_id
             LEFT JOIN services s ON s.id = ps.service_id
             WHERE p.is_verified = TRUE
@@ -152,6 +179,9 @@ app.get('/api/v1/providers', async (req, res) => {
         // Add ORDER BY for top-rated request
         if (sort_by === 'top_rated') {
             query += ` ORDER BY p.average_rating DESC, p.review_count DESC LIMIT 5`;
+        } else {
+             // FIX: Corrected column name to profile_picture_url
+             query += ` GROUP BY p.id, u.profile_picture_url, s.name`;
         }
 
         const result = await pool.query(query, queryParams);
@@ -389,7 +419,8 @@ app.get('/api/v1/user/profile', auth, async (req, res) => {
     const role = req.user.role;
     
     try {
-        const userResult = await pool.query('SELECT id, email, role, created_at FROM users WHERE id = $1', [user_id]);
+        // FIX: Corrected column name to profile_picture_url
+        const userResult = await pool.query('SELECT id, email, role, created_at, profile_picture_url FROM users WHERE id = $1', [user_id]);
         const user = userResult.rows[0];
 
         if (!user) {
@@ -496,6 +527,49 @@ app.put('/api/v1/user/profile', auth, async (req, res) => {
 });
 
 /**
+ * @route POST /api/v1/user/profile-photo
+ * @desc Uploads and updates authenticated user's profile picture.
+ * @access Private
+ */
+app.post('/api/v1/user/profile-photo', auth, (req, res, next) => {
+    // Single file upload middleware, field name is 'profile_photo'
+    // NOTE: The client sends the file under the name 'profile_photo'
+    upload.single('profile_photo')(req, res, async (err) => {
+        if (err instanceof multer.MulterError) {
+            // A Multer error occurred when uploading.
+            return res.status(400).json({ error: err.message });
+        } else if (err) {
+            // An unknown error occurred.
+            return res.status(500).json({ error: err.message });
+        }
+
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded.' });
+        }
+
+        const user_id = req.user.id;
+        const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+        
+        try {
+            // FIX: Corrected column name to profile_picture_url
+            await pool.query(
+                'UPDATE users SET profile_picture_url = $1 WHERE id = $2',
+                [fileUrl, user_id]
+            );
+
+            res.status(200).json({
+                message: 'Profile picture uploaded successfully.',
+                profile_picture_url: fileUrl // Sending the correct key back
+            });
+        } catch (dbError) {
+            console.error('DB update error on profile photo:', dbError);
+            res.status(500).json({ error: 'Failed to save photo URL to database.' });
+        }
+    });
+});
+
+
+/**
  * @route GET /api/v1/user/wallet
  * @desc Get authenticated user's wallet balance
  * @access Private
@@ -515,9 +589,17 @@ app.get('/api/v1/user/wallet', auth, async (req, res) => {
             return res.status(200).json({ balance: 0.00 });
         }
 
+        // NEW: Also fetch pending requests count
+        const pendingRequests = await pool.query(
+            'SELECT COUNT(id) FROM wallet_requests WHERE user_id = $1 AND status = $2',
+            [user_id, 'pending']
+        );
+
+
         res.status(200).json({
             message: 'Wallet balance retrieved successfully.',
-            balance: parseFloat(walletQuery.rows[0].balance)
+            balance: parseFloat(walletQuery.rows[0].balance),
+            pending_requests_count: parseInt(pendingRequests.rows[0].count, 10)
         });
     } catch (err) {
         console.error('Wallet fetch error:', err);
@@ -526,104 +608,116 @@ app.get('/api/v1/user/wallet', auth, async (req, res) => {
 });
 
 
+// --- NEW WALLET REQUEST ROUTES ---
+
 /**
- * @route POST /api/v1/customer/wallet/deposit
- * @desc Mock deposit funds into customer's wallet
+ * @route POST /api/v1/customer/wallet/deposit-request
+ * @desc Customer submits a deposit request after paying via QR/UPI.
  * @access Private (Customer only)
  */
-app.post('/api/v1/customer/wallet/deposit', auth, async (req, res) => {
+app.post('/api/v1/customer/wallet/deposit-request', auth, upload.single('screenshot_file'), async (req, res) => {
     const { id: user_id, role } = req.user;
-    const { amount } = req.body;
+    const { amount: amountStr, transaction_reference } = req.body;
+    const file = req.file;
 
     if (role !== 'customer') {
-        return res.status(403).json({ error: 'Access denied. Only customers can deposit.' });
+        return res.status(403).json({ error: 'Access denied. Only customers can request deposits.' });
     }
+    
+    const amount = parseFloat(amountStr);
+    
     if (typeof amount !== 'number' || amount <= 0) {
         return res.status(400).json({ error: 'Invalid deposit amount.' });
     }
+    if (!transaction_reference) {
+         return res.status(400).json({ error: 'UPI Transaction Reference is required.' });
+    }
+    if (!file) {
+        return res.status(400).json({ error: 'Screenshot proof is required.' });
+    }
+    
+    const screenshotUrl = `${req.protocol}://${req.get('host')}/uploads/${file.filename}`;
 
-    const client = await pool.connect();
+
     try {
-        await client.query('BEGIN');
-        
-        // 1. Update wallet balance
-        await client.query(
-            'UPDATE wallets SET balance = balance + $1 WHERE user_id = $2',
-            [amount, user_id]
+        const result = await pool.query(
+            'INSERT INTO wallet_requests (user_id, type, amount, transaction_reference, screenshot_url) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+            [user_id, 'deposit', amount, transaction_reference, screenshotUrl]
         );
         
-        // 2. Log transaction
-        await client.query(
-            'INSERT INTO transactions (user_id, type, amount) VALUES ($1, $2, $3)',
-            [user_id, 'deposit', amount]
-        );
+        // Notify admin via email (optional in mock, but good practice)
+        console.log(`NEW DEPOSIT REQUEST: User ${user_id} for ${amount}. Request ID: ${result.rows[0].id}`);
 
-        await client.query('COMMIT');
-        
-        res.status(200).json({ message: 'Deposit successful. Wallet balance updated.' });
+        res.status(201).json({ 
+            message: 'Deposit request submitted for admin approval.', 
+            request_id: result.rows[0].id 
+        });
 
     } catch (err) {
-        await client.query('ROLLBACK');
-        console.error('Wallet deposit error:', err);
-        res.status(500).json({ error: 'An error occurred during deposit.' });
-    } finally {
-        client.release();
+        console.error('Deposit request error:', err);
+        res.status(500).json({ error: 'An error occurred during deposit request.' });
     }
 });
 
 /**
- * @route POST /api/v1/provider/wallet/withdraw
- * @desc Mock withdraw funds from provider's wallet
+ * @route POST /api/v1/provider/wallet/withdraw-request
+ * @desc Provider submits a withdrawal request.
  * @access Private (Provider only)
  */
-app.post('/api/v1/provider/wallet/withdraw', auth, async (req, res) => {
+app.post('/api/v1/provider/wallet/withdraw-request', auth, async (req, res) => {
     const { id: user_id, role } = req.user;
-    const { amount } = req.body;
+    const { amount, transaction_reference } = req.body; // transaction_reference holds UPI ID or Bank details
 
     if (role !== 'provider') {
-        return res.status(403).json({ error: 'Access denied. Only providers can withdraw.' });
+        return res.status(403).json({ error: 'Access denied. Only providers can request withdrawals.' });
     }
     if (typeof amount !== 'number' || amount <= 0) {
         return res.status(400).json({ error: 'Invalid withdrawal amount.' });
     }
-
+    if (!transaction_reference) {
+         return res.status(400).json({ error: 'UPI ID or Bank Details are required for withdrawal.' });
+    }
+    
     const client = await pool.connect();
+
     try {
         await client.query('BEGIN');
         
-        // 1. Check if balance is sufficient
+        // 1. Check if balance is sufficient (FOR UPDATE to lock row)
         const walletResult = await client.query('SELECT balance FROM wallets WHERE user_id = $1 FOR UPDATE', [user_id]);
         const currentBalance = parseFloat(walletResult.rows[0]?.balance || 0);
 
         if (amount > currentBalance) {
             await client.query('ROLLBACK');
-            return res.status(400).json({ error: 'Insufficient wallet balance for withdrawal.' });
+            return res.status(400).json({ error: 'Insufficient wallet balance for withdrawal request.' });
         }
         
-        // 2. Update wallet balance
-        await client.query(
-            'UPDATE wallets SET balance = balance - $1 WHERE user_id = $2',
-            [amount, user_id]
+        // 2. Insert withdrawal request
+        const result = await pool.query(
+            'INSERT INTO wallet_requests (user_id, type, amount, transaction_reference) VALUES ($1, $2, $3, $4) RETURNING id',
+            [user_id, 'withdrawal', amount, transaction_reference]
         );
         
-        // 3. Log transaction
-        await client.query(
-            'INSERT INTO transactions (user_id, type, amount) VALUES ($1, $2, $3)',
-            [user_id, 'withdrawal', amount]
-        );
-
         await client.query('COMMIT');
         
-        res.status(200).json({ message: 'Withdrawal successful. Funds transferred to your bank account.' });
+        // Notify admin via email (optional in mock, but good practice)
+        console.log(`NEW WITHDRAWAL REQUEST: User ${user_id} for ${amount}. Request ID: ${result.rows[0].id}`);
+
+        res.status(201).json({ 
+            message: 'Withdrawal request submitted for admin approval.',
+            request_id: result.rows[0].id 
+        });
 
     } catch (err) {
         await client.query('ROLLBACK');
-        console.error('Wallet withdrawal error:', err);
-        res.status(500).json({ error: 'An error occurred during withdrawal.' });
+        console.error('Withdrawal request error:', err);
+        res.status(500).json({ error: 'An error occurred during withdrawal request.' });
     } finally {
         client.release();
     }
 });
+
+// --- END NEW WALLET REQUEST ROUTES ---
 
 
 /**
@@ -790,12 +884,14 @@ app.get('/api/v1/provider/profile', auth, async (req, res) => {
     }
     
     try {
+        // FIX: Corrected column name to profile_picture_url
         const profileQuery = `
-            SELECT p.*, ARRAY_AGG(ps.service_id) AS service_ids
+            SELECT p.*, ARRAY_AGG(ps.service_id) AS service_ids, u.profile_picture_url
             FROM providers p
+            JOIN users u ON p.user_id = u.id
             LEFT JOIN provider_services ps ON p.id = ps.provider_id
             WHERE p.user_id = $1
-            GROUP BY p.id;
+            GROUP BY p.id, u.profile_picture_url;
         `;
         const result = await pool.query(profileQuery, [user_id]);
         
@@ -828,30 +924,36 @@ app.post('/api/v1/provider/profile', auth, async (req, res) => {
         return res.status(403).json({ error: 'Access denied. Only providers can update profiles.' });
     }
 
-    const { display_name, bio, location_lat, location_lon, service_radius_km, service_ids } = req.body;
+    const { display_name, bio, location_lat, location_lon, service_radius_km, service_ids, payout_upi_id } = req.body;
 
     if (!display_name || !bio || !service_ids || !Array.isArray(service_ids) || service_ids.length === 0) {
         return res.status(400).json({ error: 'Display name, bio, and at least one service ID are required.' });
     }
 
+    // Payout UPI ID is only validated/updated if present in the request body (allows separate form updates)
+    if (!payout_upi_id && req.body.hasOwnProperty('payout_upi_id')) {
+        return res.status(400).json({ error: 'Payout UPI ID is required.' });
+    }
+
     try {
         await pool.query('BEGIN');
+        
+        let updateFields = 'display_name = $1, bio = $2, location_lat = $3, location_lon = $4, service_radius_km = $5, updated_at = CURRENT_TIMESTAMP';
+        let updateParams = [display_name, bio, location_lat, location_lon, service_radius_km];
+        
+        if (payout_upi_id !== undefined) {
+             updateFields += `, payout_upi_id = $${updateParams.length + 1}`;
+             updateParams.push(payout_upi_id);
+        }
+        updateParams.push(user_id); // User ID is the last parameter
 
         const updateQuery = `
             UPDATE providers
-            SET display_name = $1, bio = $2, location_lat = $3, location_lon = $4, 
-                service_radius_km = $5, updated_at = CURRENT_TIMESTAMP
-            WHERE user_id = $6
+            SET ${updateFields}
+            WHERE user_id = $${updateParams.length}
             RETURNING id;
         `;
-        const result = await pool.query(updateQuery, [
-            display_name, 
-            bio, 
-            location_lat, 
-            location_lon, 
-            service_radius_km, 
-            user_id
-        ]);
+        const result = await pool.query(updateQuery, updateParams);
 
         if (result.rows.length === 0) {
              throw new Error('Provider record not found for this user_id. Setup failed.');
@@ -902,7 +1004,7 @@ app.get('/api/v1/provider/bookings', auth, async (req, res) => {
         const bookingsQuery = `
             SELECT 
                 b.id, b.scheduled_at, b.address, b.customer_notes, b.booking_status, b.amount, b.service_description,
-                u.email AS customer_email, s.name AS service_name, b.customer_id
+                u.email AS customer_email, u.profile_picture_url AS customer_photo, s.name AS service_name, b.customer_id
             FROM bookings b
             JOIN services s ON b.service_id = s.id
             JOIN users u ON b.customer_id = u.id
@@ -937,10 +1039,11 @@ app.get('/api/v1/customer/bookings', auth, async (req, res) => {
         const bookingsQuery = `
             SELECT 
                 b.id, b.scheduled_at, b.address, b.customer_notes, b.booking_status, b.amount, b.service_description,
-                p.display_name AS provider_name, s.name AS service_name, b.provider_id
+                p.display_name AS provider_name, s.name AS service_name, b.provider_id, u.profile_picture_url AS provider_photo
             FROM bookings b
             JOIN providers p ON b.provider_id = p.id
             JOIN services s ON b.service_id = s.id
+            JOIN users u ON p.user_id = u.id
             WHERE b.customer_id = $1
             ORDER BY b.scheduled_at DESC;
         `;
@@ -1042,7 +1145,9 @@ app.put('/api/v1/bookings/:id', auth, async (req, res) => {
         return res.status(403).json({ msg: 'Access denied. Only providers can update booking status.' });
     }
     
-    const validStatuses = ['accepted', 'rejected', 'completed', 'closed'];
+    // FIX: Updated validStatuses to only contain client-side triggers (rejected, completed, closed) 
+    // The server determines the final status 'awaiting_customer_confirmation'
+    const validStatuses = ['accepted', 'rejected', 'completed', 'closed']; 
     if (!validStatuses.includes(status)) {
         return res.status(400).json({ error: 'Invalid status update provided.' });
     }
@@ -1087,7 +1192,7 @@ app.put('/api/v1/bookings/:id', auth, async (req, res) => {
             `;
             queryParams = [booking_id, provider_id, nextStatus, amount];
             
-        } else if (status === 'rejected' || status === 'completed') {
+        } else if (status === 'rejected' || status === 'completed' || status === 'closed') {
             // Simple status update
             updateQuery = `
                 UPDATE bookings
@@ -1409,9 +1514,8 @@ app.post('/api/v1/bookings/:id/messages/upload', auth, upload.single('file'), as
         return res.status(400).json({ error: 'File attachment is required.' });
     }
     
-    // NOTE: In a production app, you would upload file.buffer to AWS S3/Cloud Storage here.
-    // For this example, we'll use a mock public URL.
-    const mockFileUrl = `https://example.com/attachments/${booking_id}/${file.filename}`;
+    // FIX: Use actual server path for file access
+    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${file.filename}`;
     const content = `File uploaded: ${file.originalname}`;
 
     try {
@@ -1441,14 +1545,14 @@ app.post('/api/v1/bookings/:id/messages/upload', auth, upload.single('file'), as
         const messageInsert = await pool.query(
             // is_read defaults to FALSE
             'INSERT INTO messages (booking_id, sender_id, recipient_id, content, file_url) VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at',
-            [booking_id, sender_id, recipient_id, content, mockFileUrl]
+            [booking_id, sender_id, recipient_id, content, fileUrl]
         );
 
         res.status(201).json({ 
             message: 'File sent successfully.', 
             message_id: messageInsert.rows[0].id,
             created_at: messageInsert.rows[0].created_at,
-            file_url: mockFileUrl
+            file_url: fileUrl
         });
 
     } catch (err) {
@@ -1670,13 +1774,153 @@ app.post('/api/v1/reviews', auth, async (req, res) => {
 });
 
 
-// --- ADMIN ROUTES (No changes needed here based on request) ---
+// --- ADMIN ROUTES ---
+
+/**
+ * @route GET /api/v1/admin/wallet-requests
+ * @desc Get all pending wallet requests (deposit/withdrawal)
+ * @access Private (Admin only)
+ */
+app.get('/api/v1/admin/wallet-requests', auth, async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ msg: 'Access denied. Admin role required.' });
+    }
+    
+    try {
+        const query = `
+            SELECT 
+                wr.id, 
+                wr.type, 
+                wr.amount, 
+                wr.transaction_reference, 
+                wr.screenshot_url,
+                wr.requested_at, 
+                u.email, 
+                u.role,
+                wr.status
+            FROM wallet_requests wr
+            JOIN users u ON wr.user_id = u.id
+            ORDER BY wr.status, wr.requested_at ASC;
+        `;
+        const result = await pool.query(query);
+
+        res.status(200).json(result.rows);
+    } catch (err) {
+        console.error('Admin wallet request fetch error:', err);
+        res.status(500).json({ error: 'Failed to fetch wallet requests.' });
+    }
+});
+
+/**
+ * @route PUT /api/v1/admin/wallet-requests/:id/approve
+ * @desc Admin approves a wallet request and updates balances/transactions.
+ * @access Private (Admin only)
+ */
+app.put('/api/v1/admin/wallet-requests/:id/approve', auth, async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ msg: 'Access denied. Admin role required.' });
+    }
+    const request_id = req.params.id;
+
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        // 1. Fetch and lock the request
+        const requestResult = await client.query(
+            'SELECT id, user_id, type, amount, status FROM wallet_requests WHERE id = $1 AND status = $2 FOR UPDATE',
+            [request_id, 'pending']
+        );
+        const request = requestResult.rows[0];
+
+        if (!request) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Pending request not found.' });
+        }
+
+        const { user_id, type, amount } = request;
+        const adjustment = type === 'deposit' ? amount : -amount;
+        const txnType = type === 'deposit' ? 'deposit_admin_approved' : 'withdrawal_admin_approved';
+
+        // 2. Update wallet balance
+        const walletUpdate = await client.query(
+            'UPDATE wallets SET balance = balance + $1 WHERE user_id = $2 RETURNING balance',
+            [adjustment, user_id]
+        );
+        
+        // Safety check for withdrawal to prevent negative balance if balance changed externally
+        if (type === 'withdrawal' && walletUpdate.rows[0].balance < 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Withdrawal failed: Insufficient funds or concurrent modification.' });
+        }
+
+
+        // 3. Log transaction
+        await client.query(
+            'INSERT INTO transactions (user_id, type, amount) VALUES ($1, $2, $3)',
+            [user_id, txnType, amount]
+        );
+
+        // 4. Update request status
+        await client.query(
+            'UPDATE wallet_requests SET status = $1, processed_at = CURRENT_TIMESTAMP WHERE id = $2',
+            ['approved', request_id]
+        );
+
+        await client.query('COMMIT');
+        
+        res.status(200).json({
+            message: `${type.toUpperCase()} request #${request_id} approved. Balance updated.`,
+            new_balance: parseFloat(walletUpdate.rows[0].balance)
+        });
+
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Admin request approval error:', err);
+        res.status(500).json({ error: 'An error occurred during approval process.' });
+    } finally {
+        client.release();
+    }
+});
+
+/**
+ * @route PUT /api/v1/admin/wallet-requests/:id/reject
+ * @desc Admin rejects a wallet request.
+ * @access Private (Admin only)
+ */
+app.put('/api/v1/admin/wallet-requests/:id/reject', auth, async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ msg: 'Access denied. Admin role required.' });
+    }
+    const request_id = req.params.id;
+    const { reason } = req.body;
+
+    try {
+        const result = await pool.query(
+            'UPDATE wallet_requests SET status = $1, processed_at = CURRENT_TIMESTAMP, transaction_reference = $3 WHERE id = $2 AND status = $4 RETURNING id',
+            ['rejected', request_id, reason || 'Rejected by Admin.', 'pending']
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Pending request not found or already processed.' });
+        }
+
+        res.status(200).json({ message: `Request #${request_id} rejected successfully.` });
+    } catch (err) {
+        console.error('Admin request rejection error:', err);
+        res.status(500).json({ error: 'An error occurred during rejection.' });
+    }
+});
+
+
 app.get('/api/v1/admin/users', auth, async (req, res) => {
     if (req.user.role !== 'admin') {
         return res.status(403).json({ msg: 'Access denied. Admin role required.' });
     }
     try {
-        const result = await pool.query('SELECT id, email, role, status, created_at FROM users ORDER BY id DESC');
+        // FIX: Corrected column name to profile_picture_url
+        const result = await pool.query('SELECT id, email, role, status, created_at, profile_picture_url FROM users ORDER BY id DESC');
         res.status(200).json(result.rows);
     } catch (err) {
         console.error('Admin user fetch error:', err);
@@ -1697,12 +1941,13 @@ app.get('/api/v1/admin/providers', auth, async (req, res) => {
                 p.average_rating, 
                 p.review_count,
                 u.email,
+                u.profile_picture_url,
                 STRING_AGG(s.name, ', ') AS services_offered
             FROM providers p
             JOIN users u ON p.user_id = u.id
             LEFT JOIN provider_services ps ON p.id = ps.provider_id
             LEFT JOIN services s ON ps.service_id = s.id
-            GROUP BY p.id, u.email
+            GROUP BY p.id, u.email, u.profile_picture_url
             ORDER BY p.id DESC;
         `;
         const result = await pool.query(pgQuery);
