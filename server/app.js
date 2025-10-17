@@ -3,7 +3,7 @@ const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
-// NEW: Import Nodemailer
+const multer = require('multer'); // NEW: For file uploads
 const nodemailer = require('nodemailer'); 
 require('dotenv').config();
 
@@ -19,6 +19,13 @@ app.use(cors({
 // ------------------------------------
 
 app.use(express.json());
+
+// --- MULTER CONFIGURATION (For chat file uploads) ---
+// Using memory storage for simplicity (not recommended for production; use disk storage or cloud storage)
+const upload = multer({ 
+    dest: 'uploads/', // Temporary destination
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB file size limit
+});
 
 // --- DATABASE CONFIGURATION ---
 const pool = new Pool({
@@ -51,7 +58,7 @@ const transporter = nodemailer.createTransport({
 
 /**
  * @function sendEmail
- * @desc Sends an email using Nodemailer. Replaces the mock console.log function.
+ * @desc Sends an email using Nodemailer. Re-throws error for route handling.
  */
 const sendEmail = async (to, subject, html) => {
     try {
@@ -64,6 +71,7 @@ const sendEmail = async (to, subject, html) => {
         console.log('Message sent: %s', info.messageId);
     } catch (error) {
         console.error('Nodemailer Error: Failed to send email to %s', to, error.message);
+        throw error; // Re-throw the error
     }
 };
 
@@ -113,26 +121,40 @@ app.get('/api/v1/services', async (req, res) => {
 
 /**
  * @route GET /api/v1/providers
- * @desc List and filter providers by service ID and customer location/radius
+ * @desc List and filter providers by service ID and customer location/radius. Also supports top_rated sorting.
  * @access Public
  */
 app.get('/api/v1/providers', async (req, res) => {
-    const { service_id, lat, lon } = req.query;
-
-    if (!service_id || !lat || !lon) {
-        return res.status(400).json({ error: 'Service ID, latitude, and longitude are required for search.' });
+    const { service_id, lat, lon, sort_by } = req.query;
+    
+    // Allow fetching without specific location for top_rated on homepage, but recommend location for actual search
+    if (!service_id && sort_by !== 'top_rated') {
+         return res.status(400).json({ error: 'Service ID or sort_by=top_rated is required.' });
     }
 
+    const customerLat = parseFloat(lat || 0);
+    const customerLon = parseFloat(lon || 0);
+    
     try {
-        const query = `
-            SELECT p.* FROM providers p
-            JOIN provider_services ps ON p.id = ps.provider_id
-            WHERE ps.service_id = $1 AND p.is_verified = TRUE;
+        let query = `
+            SELECT p.*, s.name AS service_name FROM providers p
+            LEFT JOIN provider_services ps ON p.id = ps.provider_id
+            LEFT JOIN services s ON s.id = ps.service_id
+            WHERE p.is_verified = TRUE
         `;
-        const result = await pool.query(query, [service_id]);
+        const queryParams = [];
 
-        const customerLat = parseFloat(lat);
-        const customerLon = parseFloat(lon);
+        if (service_id) {
+            query += ` AND ps.service_id = $1`;
+            queryParams.push(service_id);
+        }
+
+        // Add ORDER BY for top-rated request
+        if (sort_by === 'top_rated') {
+            query += ` ORDER BY p.average_rating DESC, p.review_count DESC LIMIT 5`;
+        }
+
+        const result = await pool.query(query, queryParams);
 
         const filteredProviders = result.rows.map(provider => {
             const providerLat = parseFloat(provider.location_lat || 0);
@@ -149,7 +171,8 @@ app.get('/api/v1/providers', async (req, res) => {
                 distance_km: Math.round(distance * 10) / 10
             };
         }).filter(provider => 
-            provider.distance_km <= provider.service_radius_km
+            // If fetching top rated, don't filter by radius unless lat/lon provided
+            sort_by === 'top_rated' || provider.distance_km <= provider.service_radius_km
         ).sort((a, b) => a.distance_km - b.distance_km);
 
         res.status(200).json({
@@ -168,7 +191,7 @@ app.get('/api/v1/providers', async (req, res) => {
 
 /**
  * @route POST /api/v1/auth/register
- * @desc Create a new user (customer or provider) - Admin role hidden from registration
+ * @desc Create a new user (customer or provider) and send OTP
  * @access Public
  */
 app.post('/api/v1/auth/register', async (req, res) => {
@@ -182,47 +205,121 @@ app.post('/api/v1/auth/register', async (req, res) => {
     }
 
     try {
-        const userExists = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
-        if (userExists.rows.length > 0) {
-            return res.status(409).json({ error: 'Email already exists.' });
+        const userExists = await pool.query('SELECT id, status FROM users WHERE email = $1', [email]);
+        if (userExists.rows.length > 0 && userExists.rows[0].status === 'active') {
+            return res.status(409).json({ error: 'Email already exists and is active.' });
         }
-
+        
         const saltRounds = 10;
         const passwordHash = await bcrypt.hash(password, saltRounds);
+        const otp = generateOtp();
+        const otpExpiry = new Date(Date.now() + 10 * 60000); // 10 minutes from now
+        const status = 'pending_verification';
 
-        await pool.query('BEGIN');
-
-        const userInsert = await pool.query(
-            'INSERT INTO users (email, password_hash, role) VALUES ($1, $2, $3) RETURNING id',
-            [email, passwordHash, role]
+        // Use UPSERT logic to create or update a user stuck in pending verification
+        const result = await pool.query(
+            `INSERT INTO users (email, password_hash, role, status, otp_code, otp_expiry) 
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (email) DO UPDATE SET
+                password_hash = EXCLUDED.password_hash,
+                role = EXCLUDED.role,
+                status = $4,
+                otp_code = $5,
+                otp_expiry = $6
+             RETURNING id, role`,
+            [email, passwordHash, role, status, otp, otpExpiry]
         );
-        const user_id = userInsert.rows[0].id;
-
-        if (role === 'provider') {
-            await pool.query(
-                'INSERT INTO providers (user_id, display_name, bio, location_lat, location_lon, service_radius_km) VALUES ($1, $2, $3, $4, $5, $6)',
-                [user_id, `New Provider ${user_id}`, 'A dedicated service provider.', 0, 0, 10]
-            );
-        } else if (role === 'customer') {
-            await pool.query(
-                'INSERT INTO customer_profiles (user_id, full_name, phone_number, location_lat, location_lon) VALUES ($1, $2, $3, $4, $5)',
-                [user_id, 'New Customer', null, 0, 0]
-            );
-        }
-
-        await pool.query('COMMIT');
+        
+        // --- REAL EMAIL SENDING: Registration OTP ---
+        const emailBody = `
+            <h2>Service Connect Email Verification</h2>
+            <p>Thank you for registering. Please use the following code to verify your account:</p>
+            <p>Your one-time password (OTP) is: <strong>${otp}</strong></p>
+            <p>This code is valid for 10 minutes.</p>
+        `;
+        await sendEmail(
+            email,
+            'Service Connect: Verify Your Account',
+            emailBody
+        );
 
         res.status(201).json({ 
-            message: 'User registered successfully.', 
-            user_id: user_id,
+            message: 'Registration initiation successful. OTP sent to your email for verification.', 
+            user_id: result.rows[0].id,
             role: role
         });
     } catch (err) {
-        await pool.query('ROLLBACK');
-        console.error('Registration error:', err);
-        res.status(500).json({ error: 'An error occurred during registration.' });
+        console.error('Registration initiation error:', err);
+        res.status(500).json({ error: 'An error occurred during registration initiation.' });
     }
 });
+
+/**
+ * @route POST /api/v1/auth/verify-otp
+ * @desc Verify OTP and activate the user account
+ * @access Public
+ */
+app.post('/api/v1/auth/verify-otp', async (req, res) => {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+        return res.status(400).json({ error: 'Email and OTP are required.' });
+    }
+    
+    try {
+        const userResult = await pool.query(
+            'SELECT id, role, otp_code, otp_expiry, status FROM users WHERE email = $1', 
+            [email]
+        );
+        const user = userResult.rows[0];
+
+        if (!user || user.status !== 'pending_verification') {
+            return res.status(400).json({ error: 'Account not found or already verified.' });
+        }
+        
+        if (user.otp_code !== otp || new Date(user.otp_expiry) < new Date()) {
+            // Check if OTP is matched first, if so, invalid/expired
+            if (user.otp_code === otp) {
+                return res.status(401).json({ error: 'OTP has expired. Please try registering again.' });
+            }
+            return res.status(401).json({ error: 'Invalid OTP code.' });
+        }
+
+        // OTP is valid and not expired, activate the account
+        await pool.query(
+            'UPDATE users SET status = $1, otp_code = NULL, otp_expiry = NULL WHERE id = $2',
+            ['active', user.id]
+        );
+
+        const user_id = user.id;
+
+        // Perform initial profile setup for customer/provider
+        if (user.role === 'provider') {
+            await pool.query(
+                'INSERT INTO providers (user_id, display_name, bio, location_lat, location_lon, service_radius_km) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (user_id) DO NOTHING',
+                [user_id, `New Provider ${user_id}`, 'A dedicated service provider.', 0, 0, 10]
+            );
+        } else if (user.role === 'customer') {
+            await pool.query(
+                'INSERT INTO customer_profiles (user_id, full_name, phone_number, location_lat, location_lon) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (user_id) DO NOTHING',
+                [user_id, '', null, 0, 0]
+            );
+        }
+        
+        // Ensure every new user has a wallet record
+        await pool.query(
+            'INSERT INTO wallets (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', 
+            [user_id]
+        );
+
+        res.status(200).json({ message: 'Account verified successfully.', role: user.role });
+
+    } catch (err) {
+        console.error('OTP verification error:', err);
+        res.status(500).json({ error: 'An error occurred during verification.' });
+    }
+});
+
 
 /**
  * @route POST /api/v1/auth/login
@@ -237,11 +334,15 @@ app.post('/api/v1/auth/login', async (req, res) => {
     }
 
     try {
-        const userResult = await pool.query('SELECT id, password_hash, role FROM users WHERE email = $1', [email]);
+        const userResult = await pool.query('SELECT id, password_hash, role, status FROM users WHERE email = $1', [email]);
         const user = userResult.rows[0];
 
         if (!user) {
             return res.status(401).json({ error: 'Invalid email or password.' });
+        }
+        
+        if (user.status !== 'active') {
+             return res.status(401).json({ error: 'Account is not active. Please check your email for verification code.' });
         }
 
         const isMatch = await bcrypt.compare(password, user.password_hash);
@@ -355,8 +456,8 @@ app.put('/api/v1/user/profile', auth, async (req, res) => {
         // 3. Update customer profile if the user is a customer
         if (role === 'customer') {
             const updateCustomerQuery = `
-                INSERT INTO customer_profiles (user_id, full_name, phone_number, address_line_1, city, location_lat, location_lon, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+                INSERT INTO customer_profiles (user_id, full_name, phone_number, address_line_1, city, location_lat, location_lon)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
                 ON CONFLICT (user_id) 
                 DO UPDATE SET 
                     full_name = COALESCE($2, customer_profiles.full_name),
@@ -395,6 +496,137 @@ app.put('/api/v1/user/profile', auth, async (req, res) => {
 });
 
 /**
+ * @route GET /api/v1/user/wallet
+ * @desc Get authenticated user's wallet balance
+ * @access Private
+ */
+app.get('/api/v1/user/wallet', auth, async (req, res) => {
+    const user_id = req.user.id;
+    
+    try {
+        const walletQuery = await pool.query(
+            'SELECT balance FROM wallets WHERE user_id = $1', 
+            [user_id]
+        );
+        
+        if (walletQuery.rows.length === 0) {
+            // This should not happen if the registration flow is correct, but handle it gracefully
+            await pool.query('INSERT INTO wallets (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [user_id]);
+            return res.status(200).json({ balance: 0.00 });
+        }
+
+        res.status(200).json({
+            message: 'Wallet balance retrieved successfully.',
+            balance: parseFloat(walletQuery.rows[0].balance)
+        });
+    } catch (err) {
+        console.error('Wallet fetch error:', err);
+        res.status(500).send('Server Error retrieving wallet.');
+    }
+});
+
+
+/**
+ * @route POST /api/v1/customer/wallet/deposit
+ * @desc Mock deposit funds into customer's wallet
+ * @access Private (Customer only)
+ */
+app.post('/api/v1/customer/wallet/deposit', auth, async (req, res) => {
+    const { id: user_id, role } = req.user;
+    const { amount } = req.body;
+
+    if (role !== 'customer') {
+        return res.status(403).json({ error: 'Access denied. Only customers can deposit.' });
+    }
+    if (typeof amount !== 'number' || amount <= 0) {
+        return res.status(400).json({ error: 'Invalid deposit amount.' });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        // 1. Update wallet balance
+        await client.query(
+            'UPDATE wallets SET balance = balance + $1 WHERE user_id = $2',
+            [amount, user_id]
+        );
+        
+        // 2. Log transaction
+        await client.query(
+            'INSERT INTO transactions (user_id, type, amount) VALUES ($1, $2, $3)',
+            [user_id, 'deposit', amount]
+        );
+
+        await client.query('COMMIT');
+        
+        res.status(200).json({ message: 'Deposit successful. Wallet balance updated.' });
+
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Wallet deposit error:', err);
+        res.status(500).json({ error: 'An error occurred during deposit.' });
+    } finally {
+        client.release();
+    }
+});
+
+/**
+ * @route POST /api/v1/provider/wallet/withdraw
+ * @desc Mock withdraw funds from provider's wallet
+ * @access Private (Provider only)
+ */
+app.post('/api/v1/provider/wallet/withdraw', auth, async (req, res) => {
+    const { id: user_id, role } = req.user;
+    const { amount } = req.body;
+
+    if (role !== 'provider') {
+        return res.status(403).json({ error: 'Access denied. Only providers can withdraw.' });
+    }
+    if (typeof amount !== 'number' || amount <= 0) {
+        return res.status(400).json({ error: 'Invalid withdrawal amount.' });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        // 1. Check if balance is sufficient
+        const walletResult = await client.query('SELECT balance FROM wallets WHERE user_id = $1 FOR UPDATE', [user_id]);
+        const currentBalance = parseFloat(walletResult.rows[0]?.balance || 0);
+
+        if (amount > currentBalance) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Insufficient wallet balance for withdrawal.' });
+        }
+        
+        // 2. Update wallet balance
+        await client.query(
+            'UPDATE wallets SET balance = balance - $1 WHERE user_id = $2',
+            [amount, user_id]
+        );
+        
+        // 3. Log transaction
+        await client.query(
+            'INSERT INTO transactions (user_id, type, amount) VALUES ($1, $2, $3)',
+            [user_id, 'withdrawal', amount]
+        );
+
+        await client.query('COMMIT');
+        
+        res.status(200).json({ message: 'Withdrawal successful. Funds transferred to your bank account.' });
+
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Wallet withdrawal error:', err);
+        res.status(500).json({ error: 'An error occurred during withdrawal.' });
+    } finally {
+        client.release();
+    }
+});
+
+
+/**
  * @route POST /api/v1/auth/forgot-password
  * @desc Request a password reset OTP
  * @access Public
@@ -405,7 +637,7 @@ app.post('/api/v1/auth/forgot-password', async (req, res) => {
         return res.status(400).json({ error: 'Email is required.' });
     }
     try {
-        const userResult = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+        const userResult = await pool.query('SELECT id FROM users WHERE email = $1 AND status = $2', [email, 'active']);
         if (userResult.rows.length === 0) {
             // Send 200 OK even if user not found to prevent email enumeration
             return res.status(200).json({ message: 'A password reset code has been sent to your email.' });
@@ -453,8 +685,8 @@ app.post('/api/v1/auth/reset-password', async (req, res) => {
     }
     try {
         const userResult = await pool.query(
-            'SELECT id, otp_code, otp_expiry FROM users WHERE email = $1', 
-            [email]
+            'SELECT id, otp_code, otp_expiry FROM users WHERE email = $1 AND status = $2', 
+            [email, 'active']
         );
         const user = userResult.rows[0];
 
@@ -492,6 +724,59 @@ app.post('/api/v1/auth/reset-password', async (req, res) => {
 
 
 // --- PROVIDER ROUTES ---
+
+/**
+ * @route GET /api/v1/provider/earnings
+ * @desc Get provider earnings and performance analytics
+ * @access Private (Provider only)
+ */
+app.get('/api/v1/provider/earnings', auth, async (req, res) => {
+    const { id: user_id, role } = req.user;
+    if (role !== 'provider') {
+        return res.status(403).json({ error: 'Access denied. Only providers can view earnings.' });
+    }
+
+    try {
+        const analyticsQuery = `
+            SELECT 
+                w.balance AS wallet_balance,
+                p.average_rating,
+                p.review_count,
+                COUNT(b.id) FILTER (WHERE b.booking_status = 'closed' AND b.amount IS NOT NULL) AS completed_jobs,
+                COALESCE(SUM(t.amount) FILTER (WHERE t.type = 'payment_received'), 0) AS total_earnings_sum
+            FROM users u
+            JOIN providers p ON u.id = p.user_id
+            LEFT JOIN wallets w ON w.user_id = u.id
+            LEFT JOIN bookings b ON b.provider_id = p.id
+            LEFT JOIN transactions t ON t.user_id = u.id AND t.type = 'payment_received'
+            WHERE u.id = $1
+            GROUP BY w.balance, p.average_rating, p.review_count;
+        `;
+        
+        const result = await pool.query(analyticsQuery, [user_id]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Provider analytics not found.' });
+        }
+        
+        const row = result.rows[0];
+        
+        res.status(200).json({
+            message: 'Provider analytics retrieved successfully.',
+            analytics: {
+                wallet_balance: parseFloat(row.wallet_balance || 0),
+                average_rating: parseFloat(row.average_rating || 0),
+                review_count: parseInt(row.review_count || 0, 10),
+                completed_jobs: parseInt(row.completed_jobs || 0, 10),
+                total_earnings: parseFloat(row.total_earnings_sum || 0),
+            }
+        });
+
+    } catch (err) {
+        console.error('Provider earnings fetch error:', err);
+        res.status(500).json({ error: 'An error occurred during earnings fetch.' });
+    }
+});
 
 /**
  * @route GET /api/v1/provider/profile
@@ -616,7 +901,7 @@ app.get('/api/v1/provider/bookings', auth, async (req, res) => {
 
         const bookingsQuery = `
             SELECT 
-                b.id, b.scheduled_at, b.address, b.customer_notes, b.booking_status, 
+                b.id, b.scheduled_at, b.address, b.customer_notes, b.booking_status, b.amount, b.service_description,
                 u.email AS customer_email, s.name AS service_name, b.customer_id
             FROM bookings b
             JOIN services s ON b.service_id = s.id
@@ -651,7 +936,7 @@ app.get('/api/v1/customer/bookings', auth, async (req, res) => {
     try {
         const bookingsQuery = `
             SELECT 
-                b.id, b.scheduled_at, b.address, b.customer_notes, b.booking_status, 
+                b.id, b.scheduled_at, b.address, b.customer_notes, b.booking_status, b.amount, b.service_description,
                 p.display_name AS provider_name, s.name AS service_name, b.provider_id
             FROM bookings b
             JOIN providers p ON b.provider_id = p.id
@@ -704,7 +989,7 @@ app.post('/api/v1/bookings', auth, async (req, res) => {
             return res.status(404).json({ error: 'Provider or service information not found.' });
         }
         
-        // Insert booking (service_description is stored in the table as per schema update)
+        // Insert booking (status is pending_provider)
         const bookingInsert = await pool.query(
             `INSERT INTO bookings (customer_id, provider_id, service_id, scheduled_at, address, customer_notes, service_description, booking_status) 
              VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending_provider') RETURNING id`,
@@ -724,7 +1009,7 @@ app.post('/api/v1/bookings', auth, async (req, res) => {
                 <li><strong>Location:</strong> ${address}</li>
             </ul>
             <p><strong>Customer's Detailed Description:</strong><br/>${service_description}</p>
-            <p>Please log into your Provider Dashboard to review and <strong>Accept</strong> or <strong>Reject</strong> this request.</p>
+            <p>Please log into your Provider Dashboard to review and <strong>Set Price</strong> or <strong>Reject</strong> this request.</p>
         `;
         await sendEmail(
             providerInfo.email,
@@ -745,69 +1030,108 @@ app.post('/api/v1/bookings', auth, async (req, res) => {
 
 /**
  * @route PUT /api/v1/bookings/:id
- * @desc Update booking status (Accept/Reject/Complete)
+ * @desc Update booking status (Reject/Complete) AND handle Provider Price Setting (Accept)
  * @access Private (Provider only)
  */
 app.put('/api/v1/bookings/:id', auth, async (req, res) => {
     const { id: provider_user_id, role } = req.user;
     const booking_id = req.params.id;
-    const { status } = req.body;
+    const { status, amount } = req.body; // amount is optional, used only for 'accepted' status
 
     if (role !== 'provider') {
         return res.status(403).json({ msg: 'Access denied. Only providers can update booking status.' });
     }
-    if (!['accepted', 'rejected', 'completed', 'closed'].includes(status)) {
+    
+    const validStatuses = ['accepted', 'rejected', 'completed', 'closed'];
+    if (!validStatuses.includes(status)) {
         return res.status(400).json({ error: 'Invalid status update provided.' });
     }
 
+    const client = await pool.connect();
+    
     try {
-        const providerResult = await pool.query('SELECT id FROM providers WHERE user_id = $1', [provider_user_id]);
+        await client.query('BEGIN');
+        
+        const providerResult = await client.query('SELECT id FROM providers WHERE user_id = $1', [provider_user_id]);
         
         if (providerResult.rows.length === 0) {
+             await client.query('ROLLBACK');
              return res.status(404).json({ error: 'Provider profile not found for this logged-in user.' });
         }
         
         const provider_id = providerResult.rows[0].id;
-        
-        // Update the booking status, ensuring the provider owns the booking
-        const updateQuery = `
+        let customer_user_id;
+        let updateQuery = `
             UPDATE bookings
-            SET booking_status = $1, updated_at = CURRENT_TIMESTAMP
-            WHERE id = $2 AND provider_id = $3
-            RETURNING customer_id, booking_status;
+            SET updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1 AND provider_id = $2
+            RETURNING customer_id, booking_status, amount;
         `;
-        const result = await pool.query(updateQuery, [status, booking_id, provider_id]);
+        let queryParams = [booking_id, provider_id];
+        let nextStatus = status;
+
+
+        if (status === 'accepted') {
+            // New logic: Provider sets the price, moves status to AWAITING CUSTOMER CONFIRMATION
+            if (typeof amount !== 'number' || amount <= 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Amount is required and must be positive when accepting a service.' });
+            }
+            
+            nextStatus = 'awaiting_customer_confirmation';
+            updateQuery = `
+                UPDATE bookings
+                SET booking_status = $3, amount = $4, updated_at = CURRENT_TIMESTAMP
+                WHERE id = $1 AND provider_id = $2
+                RETURNING customer_id, booking_status, amount;
+            `;
+            queryParams = [booking_id, provider_id, nextStatus, amount];
+            
+        } else if (status === 'rejected' || status === 'completed') {
+            // Simple status update
+            updateQuery = `
+                UPDATE bookings
+                SET booking_status = $3, updated_at = CURRENT_TIMESTAMP
+                WHERE id = $1 AND provider_id = $2
+                RETURNING customer_id, booking_status, amount;
+            `;
+            queryParams = [booking_id, provider_id, nextStatus];
+        }
+
+        const result = await client.query(updateQuery, queryParams);
 
         if (result.rowCount === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Booking not found or not owned by this provider.' });
         }
         
-        const customer_user_id = result.rows[0].customer_id;
+        customer_user_id = result.rows[0].customer_id;
         
         // Retrieve customer email for notification
-        const customerEmailResult = await pool.query('SELECT email FROM users WHERE id = $1', [customer_user_id]);
+        const customerEmailResult = await client.query('SELECT email FROM users WHERE id = $1', [customer_user_id]);
         const customerEmail = customerEmailResult.rows[0]?.email;
         
         // --- REAL EMAIL SENDING: Notification to Customer ---
         if (customerEmail) {
-            let subject = `Service Connect Booking Update: ${status.toUpperCase()}`;
-            let emailBody = `<p>Your booking (ID: ${booking_id}) status has been updated to <strong>${status}</strong>.</p>`;
+            let subject = `Service Connect Booking Update: ${nextStatus.toUpperCase()}`;
+            let emailBody = `<p>Your booking (ID: ${booking_id}) status has been updated to <strong>${nextStatus}</strong>.</p>`;
             
-            if (status === 'accepted') {
-                subject = `Service Connect: Your Request has been ACCEPTED!`;
+            if (nextStatus === 'awaiting_customer_confirmation') {
+                subject = `Service Connect: Price Quote Received for Booking ${booking_id}`;
                 emailBody = `
-                    <h2>Your Service Request has been Accepted!</h2>
-                    <p>Great news! Your service request (ID: ${booking_id}) has been **accepted** by the provider.</p>
-                    <p>You can now use the **in-app chat** feature in your dashboard to coordinate details directly with your service provider.</p>
+                    <h2>Action Required: Price Quote Received!</h2>
+                    <p>Your service request (ID: ${booking_id}) has been reviewed by the provider.</p>
+                    <p>The quoted price is <strong>₹${parseFloat(amount).toFixed(2)}</strong>.</p>
+                    <p>Please log into your Customer Dashboard to **Confirm** or **Reject** this price before proceeding.</p>
                 `;
-            } else if (status === 'completed') {
+            } else if (nextStatus === 'completed') {
                 subject = `Service Connect: Action Required - Payment Due for Booking ${booking_id}`;
                 emailBody = `
                     <h2>Service Completed - Payment Due</h2>
                     <p>Your service for booking ID ${booking_id} has been marked as <strong>Completed</strong> by the provider.</p>
-                    <p>Please log in to your dashboard to make the final payment and optionally leave a review.</p>
+                    <p>Please log in to your dashboard to complete the payment.</p>
                 `;
-            } else if (status === 'rejected') {
+            } else if (nextStatus === 'rejected') {
                  emailBody = `
                     <h2>Service Request Rejected</h2>
                     <p>We are sorry, but your service request (ID: ${booking_id}) was **rejected** by the provider.</p>
@@ -817,17 +1141,162 @@ app.put('/api/v1/bookings/:id', auth, async (req, res) => {
 
             await sendEmail(customerEmail, subject, emailBody);
         }
+        
+        await client.query('COMMIT');
 
         res.status(200).json({
-            message: `Booking #${booking_id} status updated to ${status}.`,
-            new_status: status
+            message: `Booking #${booking_id} status updated to ${nextStatus}.`,
+            new_status: nextStatus
         });
 
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error('Booking update error:', err);
         res.status(500).json({ error: 'An error occurred while updating the booking status.' });
+    } finally {
+        client.release();
     }
 });
+
+
+/**
+ * @route PUT /api/v1/bookings/:id/confirm-price
+ * @desc Customer accepts or rejects the provider's quoted price.
+ * @access Private (Customer only)
+ */
+app.put('/api/v1/bookings/:id/confirm-price', auth, async (req, res) => {
+    const { id: customer_user_id, role } = req.user;
+    const booking_id = req.params.id;
+    const { accepted } = req.body; // boolean: true for accept, false for reject
+
+    if (role !== 'customer') {
+        return res.status(403).json({ error: 'Access denied. Only customers can confirm prices.' });
+    }
+    if (typeof accepted !== 'boolean') {
+        return res.status(400).json({ error: 'Confirmation status (accepted) must be a boolean.' });
+    }
+
+    const client = await pool.connect();
+    
+    try {
+        await client.query('BEGIN');
+        
+        let newStatus;
+        let subject;
+        let message;
+
+        if (accepted) {
+            newStatus = 'accepted';
+            subject = `Booking ${booking_id} Price ACCEPTED!`;
+            message = 'Price confirmed! The service is now officially accepted.';
+        } else {
+            newStatus = 'rejected';
+            subject = `Booking ${booking_id} Price REJECTED (Booking Cancelled)`;
+            message = 'Price rejected. The booking has been cancelled.';
+        }
+
+        const updateQuery = `
+            UPDATE bookings
+            SET booking_status = $3, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1 AND customer_id = $2 AND booking_status = 'awaiting_customer_confirmation'
+            RETURNING provider_id, amount;
+        `;
+        const result = await client.query(updateQuery, [booking_id, customer_user_id, newStatus]);
+
+        if (result.rowCount === 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Booking not found, not owned by you, or status is incorrect.' });
+        }
+        
+        const provider_id = result.rows[0].provider_id;
+        
+        // Retrieve provider email for notification
+        const providerEmailResult = await client.query('SELECT u.email FROM providers p JOIN users u ON p.user_id = u.id WHERE p.id = $1', [provider_id]);
+        const providerEmail = providerEmailResult.rows[0]?.email;
+        
+        // Notify provider
+        if (providerEmail) {
+            const emailBody = `
+                <h2>Booking ${booking_id} Update: ${newStatus.toUpperCase()}</h2>
+                <p>The customer has **${newStatus.toUpperCase()}** the quoted price of ₹${parseFloat(result.rows[0].amount).toFixed(2)}.</p>
+                ${accepted ? '<p>The booking is now ACCEPTED. You may start communication via chat.</p>' : '<p>The booking has been cancelled and moved to rejected status.</p>'}
+            `;
+            await sendEmail(providerEmail, subject, emailBody);
+        }
+        
+        await client.query('COMMIT');
+
+        res.status(200).json({
+            message: message,
+            new_status: newStatus
+        });
+
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Price confirmation error:', err);
+        res.status(500).json({ error: 'An error occurred during price confirmation.' });
+    } finally {
+        client.release();
+    }
+});
+
+
+/**
+ * @route GET /api/v1/user/unread-messages
+ * @desc Retrieve count of unread messages for the logged-in user
+ * @access Private
+ */
+app.get('/api/v1/user/unread-messages', auth, async (req, res) => {
+    const user_id = req.user.id;
+
+    try {
+        const countQuery = `
+            SELECT COUNT(m.id) AS unread_count
+            FROM messages m
+            WHERE m.recipient_id = $1 AND m.is_read = FALSE;
+        `;
+        const result = await pool.query(countQuery, [user_id]);
+
+        res.status(200).json({
+            unread_count: parseInt(result.rows[0].unread_count, 10)
+        });
+
+    } catch (err) {
+        console.error('Unread count fetch error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch unread count.' });
+    }
+});
+
+/**
+ * @route PUT /api/v1/messages/read
+ * @desc Mark all messages for a specific booking chat as read
+ * @access Private
+ */
+app.put('/api/v1/messages/read', auth, async (req, res) => {
+    const { id: user_id } = req.user;
+    const { booking_id } = req.body;
+
+    if (!booking_id) {
+        return res.status(400).json({ error: 'Booking ID is required.' });
+    }
+
+    try {
+        // Only mark as read messages where the logged-in user is the recipient
+        const updateQuery = `
+            UPDATE messages
+            SET is_read = TRUE, updated_at = CURRENT_TIMESTAMP
+            WHERE booking_id = $1 AND recipient_id = $2 AND is_read = FALSE;
+        `;
+        await pool.query(updateQuery, [booking_id, user_id]);
+
+        res.status(200).json({ message: 'Messages marked as read.' });
+
+    } catch (err) {
+        console.error('Mark read error:', err.message);
+        res.status(500).json({ error: 'Failed to mark messages as read.' });
+    }
+});
+
 
 /**
  * @route GET /api/v1/bookings/:id/messages
@@ -849,7 +1318,7 @@ app.get('/api/v1/bookings/:id/messages', auth, async (req, res) => {
         }
         
         const messagesQuery = `
-            SELECT m.id, m.sender_id, m.content, m.created_at, u.email AS sender_email
+            SELECT m.id, m.sender_id, m.content, m.created_at, m.file_url, u.email AS sender_email
             FROM messages m
             JOIN users u ON m.sender_id = u.id
             WHERE m.booking_id = $1
@@ -871,7 +1340,7 @@ app.get('/api/v1/bookings/:id/messages', auth, async (req, res) => {
 
 /**
  * @route POST /api/v1/bookings/:id/messages
- * @desc Send a message within a booking chat
+ * @desc Send a text message within a booking chat
  * @access Private (Customer or Provider)
  */
 app.post('/api/v1/bookings/:id/messages', auth, async (req, res) => {
@@ -895,6 +1364,7 @@ app.post('/api/v1/bookings/:id/messages', auth, async (req, res) => {
 
         const booking = bookingResult.rows[0];
         
+        // Determine recipient ID
         let recipient_id;
         if (sender_id === booking.customer_id) {
             recipient_id = await pool.query('SELECT user_id FROM providers WHERE id = $1', [booking.provider_id]).then(r => r.rows[0]?.user_id);
@@ -907,6 +1377,7 @@ app.post('/api/v1/bookings/:id/messages', auth, async (req, res) => {
         }
         
         const messageInsert = await pool.query(
+            // is_read defaults to FALSE
             'INSERT INTO messages (booking_id, sender_id, recipient_id, content) VALUES ($1, $2, $3, $4) RETURNING id, created_at',
             [booking_id, sender_id, recipient_id, content]
         );
@@ -924,26 +1395,85 @@ app.post('/api/v1/bookings/:id/messages', auth, async (req, res) => {
 });
 
 
+/**
+ * @route POST /api/v1/bookings/:id/messages/upload
+ * @desc Send a file attachment within a booking chat
+ * @access Private (Customer or Provider)
+ */
+app.post('/api/v1/bookings/:id/messages/upload', auth, upload.single('file'), async (req, res) => {
+    const sender_id = req.user.id;
+    const booking_id = req.params.id;
+    const file = req.file;
+
+    if (!file) {
+        return res.status(400).json({ error: 'File attachment is required.' });
+    }
+    
+    // NOTE: In a production app, you would upload file.buffer to AWS S3/Cloud Storage here.
+    // For this example, we'll use a mock public URL.
+    const mockFileUrl = `https://example.com/attachments/${booking_id}/${file.filename}`;
+    const content = `File uploaded: ${file.originalname}`;
+
+    try {
+        const bookingResult = await pool.query(
+            'SELECT customer_id, provider_id FROM bookings WHERE id = $1 AND (customer_id = $2 OR (SELECT user_id FROM providers WHERE id = provider_id) = $2)',
+            [booking_id, sender_id]
+        );
+
+        if (bookingResult.rows.length === 0) {
+            return res.status(403).json({ error: 'Access denied. You are not a party to this booking.' });
+        }
+
+        const booking = bookingResult.rows[0];
+        
+        // Determine recipient ID
+        let recipient_id;
+        if (sender_id === booking.customer_id) {
+            recipient_id = await pool.query('SELECT user_id FROM providers WHERE id = $1', [booking.provider_id]).then(r => r.rows[0]?.user_id);
+        } else {
+            recipient_id = booking.customer_id;
+        }
+
+        if (!recipient_id) {
+            return res.status(404).json({ error: 'Recipient user ID could not be determined.' });
+        }
+        
+        const messageInsert = await pool.query(
+            // is_read defaults to FALSE
+            'INSERT INTO messages (booking_id, sender_id, recipient_id, content, file_url) VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at',
+            [booking_id, sender_id, recipient_id, content, mockFileUrl]
+        );
+
+        res.status(201).json({ 
+            message: 'File sent successfully.', 
+            message_id: messageInsert.rows[0].id,
+            created_at: messageInsert.rows[0].created_at,
+            file_url: mockFileUrl
+        });
+
+    } catch (err) {
+        console.error('File send error:', err);
+        res.status(500).json({ error: 'An error occurred while sending the file.' });
+    }
+});
+
+
 // --- PAYMENT & REVIEW ROUTES ---
 
 /**
  * @route POST /api/v1/payments
- * @desc Capture payment for a completed booking
+ * @desc Capture payment for a completed booking using customer wallet balance.
  * @access Private (Customer only)
  */
 app.post('/api/v1/payments', auth, async (req, res) => {
     const { id: customer_user_id, role } = req.user;
-    const { booking_id, amount, payment_token } = req.body;
+    const { booking_id } = req.body;
 
     if (role !== 'customer') {
         return res.status(403).json({ msg: 'Access denied. Only customers can make payments.' });
     }
-    if (!booking_id || !amount || !payment_token) {
-        return res.status(400).json({ error: 'Booking ID, amount, and payment token are required.' });
-    }
-
-    if (typeof amount !== 'number' || amount <= 0) {
-        return res.status(400).json({ error: 'Invalid amount.' });
+    if (!booking_id) {
+        return res.status(400).json({ error: 'Booking ID is required.' });
     }
 
     const client = await pool.connect();
@@ -951,8 +1481,9 @@ app.post('/api/v1/payments', auth, async (req, res) => {
     try {
         await client.query('BEGIN');
 
+        // 1. Fetch booking details, ensuring it's the customer's and completed
         const bookingResult = await client.query(
-            'SELECT customer_id, booking_status, provider_id FROM bookings WHERE id = $1',
+            'SELECT customer_id, booking_status, provider_id, amount FROM bookings WHERE id = $1 FOR UPDATE',
             [booking_id]
         );
         const booking = bookingResult.rows[0];
@@ -967,21 +1498,62 @@ app.post('/api/v1/payments', auth, async (req, res) => {
         }
         if (booking.booking_status !== 'completed') {
             await client.query('ROLLBACK');
-            return res.status(400).json({ error: `Cannot process payment. Booking status is '${booking.booking_status}'. Provider must mark as completed first.` });
+            return res.status(400).json({ error: `Cannot process payment. Booking status is '${booking.booking_status}'.` });
+        }
+        
+        const paymentAmount = parseFloat(booking.amount);
+        if (isNaN(paymentAmount) || paymentAmount <= 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Payment amount is invalid or zero.' });
+        }
+        
+        // 2. Check customer wallet balance
+        const customerWallet = await client.query('SELECT balance, user_id FROM wallets WHERE user_id = $1 FOR UPDATE', [customer_user_id]);
+        const customerBalance = parseFloat(customerWallet.rows[0]?.balance || 0);
+        
+        if (customerBalance < paymentAmount) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: `Insufficient wallet balance. Required: ₹${paymentAmount.toFixed(2)}` });
         }
 
-        // --- MOCK PAYMENT GATEWAY CHARGE ---
-        const transactionId = `txn_${Date.now()}${Math.random().toString(36).substring(2, 8)}`; 
-        const paymentStatus = 'succeeded';
-        // --- END MOCK ---
+        // 3. Process Transaction: Debit Customer
+        await client.query(
+            'UPDATE wallets SET balance = balance - $1 WHERE user_id = $2',
+            [paymentAmount, customer_user_id]
+        );
+        await client.query(
+            `INSERT INTO transactions (user_id, type, amount, related_id)
+             VALUES ($1, $2, $3, $4)`,
+            [customer_user_id, 'payment_sent', paymentAmount, booking_id]
+        );
         
+        // 4. Process Transaction: Credit Provider
+        const providerUserResult = await client.query('SELECT user_id FROM providers WHERE id = $1', [booking.provider_id]);
+        const provider_user_id = providerUserResult.rows[0]?.user_id;
+
+        if (!provider_user_id) {
+            // Should not happen, but safe rollback if provider user ID is missing
+            await client.query('ROLLBACK');
+            return res.status(500).json({ error: 'Provider account user ID not found.' });
+        }
+        
+        await client.query(
+            'UPDATE wallets SET balance = balance + $1 WHERE user_id = $2',
+            [paymentAmount, provider_user_id]
+        );
+        await client.query(
+            `INSERT INTO transactions (user_id, type, amount, related_id)
+             VALUES ($1, $2, $3, $4)`,
+            [provider_user_id, 'payment_received', paymentAmount, booking_id]
+        );
+
+        // 5. Log Payment and Update Booking Status to closed
+        const transactionId = `txn_${Date.now()}${Math.random().toString(36).substring(2, 8)}`; 
         await client.query(
             `INSERT INTO payments (booking_id, amount, status, gateway_transaction_id, paid_at)
              VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)`,
-            [booking_id, amount, paymentStatus, transactionId]
+            [booking_id, paymentAmount, 'succeeded', transactionId]
         );
-
-        // Update booking status to closed (paid)
         await client.query(
             `UPDATE bookings SET booking_status = 'closed', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
             [booking_id]
@@ -990,15 +1562,15 @@ app.post('/api/v1/payments', auth, async (req, res) => {
         await client.query('COMMIT');
         
         res.status(200).json({
-            message: 'Payment captured successfully. You can now leave an optional review.',
-            status: paymentStatus,
+            message: 'Payment captured successfully. Your provider has been credited.',
+            status: 'succeeded',
             transaction_id: transactionId
         });
 
     } catch (err) {
         await client.query('ROLLBACK');
         console.error('FATAL PAYMENT PROCESSING ERROR (PostgreSQL details):', err);
-        res.status(500).json({ error: 'An error occurred during payment processing.' });
+        res.status(500).json({ error: 'An error occurred during payment processing. Transaction rolled back.' });
     } finally {
         client.release();
     }
@@ -1016,8 +1588,9 @@ app.post('/api/v1/reviews', auth, async (req, res) => {
     if (role !== 'customer') {
         return res.status(403).json({ msg: 'Access denied. Only customers can submit reviews.' });
     }
-    if (!booking_id || !rating || rating < 1 || rating > 5) {
-        return res.status(400).json({ error: 'Booking ID and a valid rating (1-5) are required for submission.' });
+    // Rating is optional (can be 0) but must be a valid number
+    if (!booking_id || typeof rating !== 'number' || rating < 0 || rating > 5) {
+        return res.status(400).json({ error: 'Booking ID and a valid rating (0-5) are required for submission.' });
     }
 
     const client = await pool.connect();
@@ -1025,6 +1598,7 @@ app.post('/api/v1/reviews', auth, async (req, res) => {
     try {
         await client.query('BEGIN');
 
+        // 1. Validate booking and payment status
         const bookingResult = await client.query(
             'SELECT b.customer_id, b.provider_id, b.booking_status, p.id AS payment_id, r.id AS review_id FROM bookings b LEFT JOIN payments p ON b.id = p.booking_id LEFT JOIN reviews r ON b.id = r.booking_id WHERE b.id = $1',
             [booking_id]
@@ -1044,14 +1618,16 @@ app.post('/api/v1/reviews', auth, async (req, res) => {
             return res.status(400).json({ error: 'This booking has already been reviewed.' });
         }
 
+        // 2. Insert Review (only if rating > 0 or comment exists, or just insert always if optional)
         await client.query(
             `INSERT INTO reviews (booking_id, customer_id, provider_id, rating, comment)
              VALUES ($1, $2, $3, $4, $5)`,
             [booking_id, customer_user_id, booking.provider_id, rating, comment]
         );
 
+        // 3. Recalculate Provider Rating (only include reviews with rating > 0)
         const aggregateResult = await client.query(
-            `SELECT CAST(AVG(rating) AS DECIMAL(3, 2)) AS avg_rating, COUNT(id) AS review_count 
+            `SELECT CAST(AVG(rating) FILTER (WHERE rating > 0) AS DECIMAL(3, 2)) AS avg_rating, COUNT(id) FILTER (WHERE rating > 0) AS review_count 
              FROM reviews WHERE provider_id = $1`,
             [booking.provider_id]
         );
@@ -1061,8 +1637,24 @@ app.post('/api/v1/reviews', auth, async (req, res) => {
             `UPDATE providers 
              SET average_rating = $1, review_count = $2, updated_at = CURRENT_TIMESTAMP 
              WHERE id = $3`,
-            [avg_rating, review_count, booking.provider_id]
+            [avg_rating || 0, review_count || 0, booking.provider_id]
         );
+        
+        // 4. Send email notification to provider
+        const providerEmailResult = await client.query('SELECT u.email FROM providers p JOIN users u ON p.user_id = u.id WHERE p.id = $1', [booking.provider_id]);
+        const providerEmail = providerEmailResult.rows[0]?.email;
+        
+        if (providerEmail) {
+            const emailBody = `
+                <h2>New Review Received!</h2>
+                <p>A customer left a review for booking ID ${booking_id}.</p>
+                ${rating > 0 ? `<p>Rating: <strong>${rating} out of 5 stars</strong></p>` : ''}
+                ${comment ? `<p>Comment: <em>${comment}</em></p>` : ''}
+                <p>Your new average rating is ${avg_rating || 'N/A'}.</p>
+            `;
+            await sendEmail(providerEmail, `New Customer Review for Booking ${booking_id}`, emailBody);
+        }
+
 
         await client.query('COMMIT');
         
@@ -1078,13 +1670,13 @@ app.post('/api/v1/reviews', auth, async (req, res) => {
 });
 
 
-// --- ADMIN ROUTES ---
+// --- ADMIN ROUTES (No changes needed here based on request) ---
 app.get('/api/v1/admin/users', auth, async (req, res) => {
     if (req.user.role !== 'admin') {
         return res.status(403).json({ msg: 'Access denied. Admin role required.' });
     }
     try {
-        const result = await pool.query('SELECT id, email, role, created_at FROM users ORDER BY id DESC');
+        const result = await pool.query('SELECT id, email, role, status, created_at FROM users ORDER BY id DESC');
         res.status(200).json(result.rows);
     } catch (err) {
         console.error('Admin user fetch error:', err);
