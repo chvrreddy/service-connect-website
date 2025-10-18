@@ -161,9 +161,18 @@ app.get('/api/v1/providers', async (req, res) => {
     const customerLat = parseFloat(lat || 0);
     const customerLon = parseFloat(lon || 0);
     
+    // Check if lat/lon were explicitly provided or are non-zero (indicating a specific search intent)
+    const isLocationProvided = !!lat && !!lon && (customerLat !== 0 || customerLon !== 0); 
+    
     try {
         let query = `
-            SELECT p.*, u.profile_picture_url, s.name AS service_name FROM providers p
+            SELECT 
+                p.id, p.display_name, p.is_verified, p.average_rating, p.review_count,
+                p.location_lat, p.location_lon, p.service_radius_km,
+                u.profile_picture_url, 
+                s.name AS service_name,
+                s.id AS service_id
+            FROM providers p
             JOIN users u ON u.id = p.user_id
             LEFT JOIN provider_services ps ON p.id = ps.provider_id
             LEFT JOIN services s ON s.id = ps.service_id
@@ -176,12 +185,14 @@ app.get('/api/v1/providers', async (req, res) => {
             queryParams.push(service_id);
         }
 
-        // Add ORDER BY for top-rated request
+        query += ` GROUP BY p.id, u.profile_picture_url, s.name, s.id`;
+
+
+        // FIX: Ensure top-rated query is correct for database sorting
         if (sort_by === 'top_rated') {
-            query += ` ORDER BY p.average_rating DESC, p.review_count DESC LIMIT 5`;
+            query += ` ORDER BY p.average_rating DESC, p.review_count DESC LIMIT 10`;
         } else {
-             // FIX: Corrected column name to profile_picture_url
-             query += ` GROUP BY p.id, u.profile_picture_url, s.name`;
+             query += ` ORDER BY p.average_rating DESC`; // Default sort for standard search
         }
 
         const result = await pool.query(query, queryParams);
@@ -189,30 +200,89 @@ app.get('/api/v1/providers', async (req, res) => {
         const filteredProviders = result.rows.map(provider => {
             const providerLat = parseFloat(provider.location_lat || 0);
             const providerLon = parseFloat(provider.location_lon || 0);
-
-            const distance = calculateDistance(
+            
+            // Only calculate distance if a location is provided
+            const distance = isLocationProvided ? calculateDistance(
                 customerLat, 
                 customerLon, 
                 providerLat, 
                 providerLon
-            );
+            ) : null; 
+            
             return {
                 ...provider,
-                distance_km: Math.round(distance * 10) / 10
+                distance_km: distance !== null ? Math.round(distance * 10) / 10 : null
             };
-        }).filter(provider => 
-            // If fetching top rated, don't filter by radius unless lat/lon provided
-            sort_by === 'top_rated' || provider.distance_km <= provider.service_radius_km
-        ).sort((a, b) => a.distance_km - b.distance_km);
+        }).filter(provider => {
+            // FILTER LOGIC:
+            // 1. If fetching top rated, include all.
+            if (sort_by === 'top_rated') return true; 
+            
+            // 2. If a location was NOT provided, include all (no distance filter).
+            if (!isLocationProvided) return true; 
+
+            // 3. If a location WAS provided, apply the radius filter.
+            return provider.distance_km !== null && provider.distance_km <= provider.service_radius_km;
+
+        }).sort((a, b) => {
+            // FINAL SORT: Prioritize distance if location is provided for standard search
+            if (isLocationProvided && sort_by !== 'top_rated') {
+                 return a.distance_km - b.distance_km;
+            }
+            // For top rated, DB sort is usually enough, but here we enforce rating sort again
+            if (sort_by === 'top_rated') {
+                 return b.average_rating - a.average_rating;
+            }
+            return 0; 
+        });
+
+        // Limit top-rated results to 5 for homepage display if requested
+        const finalProviders = sort_by === 'top_rated' ? filteredProviders.slice(0, 5) : filteredProviders;
 
         res.status(200).json({
-            message: `${filteredProviders.length} providers found in your area.`,
-            providers: filteredProviders
+            message: `${finalProviders.length} providers found.`,
+            providers: finalProviders
         });
 
     } catch (err) {
         console.error('Provider search error:', err);
         res.status(500).json({ error: 'An error occurred during provider search.' });
+    }
+});
+
+
+/**
+ * @route POST /api/v1/contact-us
+ * @desc Submit a contact form message to be viewed by Admin
+ * @access Public
+ */
+app.post('/api/v1/contact-us', async (req, res) => {
+    const { name, email, problem_description } = req.body;
+
+    if (!name || !email || !problem_description) {
+        return res.status(400).json({ error: 'Name, email, and a description are required.' });
+    }
+    
+    try {
+        // Assumes a 'contact_messages' table exists for admin view
+        const result = await pool.query(
+            'INSERT INTO contact_messages (sender_name, sender_email, message) VALUES ($1, $2, $3) RETURNING id',
+            [name, email, problem_description]
+        );
+
+        // Notify admin via email (optional)
+        const adminEmail = process.env.ADMIN_EMAIL || process.env.EMAIL_USER;
+        await sendEmail(
+            adminEmail,
+            `New Contact Form Submission (ID: ${result.rows[0].id})`,
+            `<h2>New Contact Message Received</h2><p>From: ${name} (${email})</p><p>Message: ${problem_description}</p>`
+        );
+
+        res.status(201).json({ message: 'Message submitted successfully. Admin will review shortly.' });
+
+    } catch (err) {
+        console.error('Contact form submission error:', err);
+        res.status(500).json({ error: 'An error occurred during submission.' });
     }
 });
 
@@ -837,12 +907,13 @@ app.get('/api/v1/provider/earnings', auth, async (req, res) => {
                 p.average_rating,
                 p.review_count,
                 COUNT(b.id) FILTER (WHERE b.booking_status = 'closed' AND b.amount IS NOT NULL) AS completed_jobs,
-                COALESCE(SUM(t.amount) FILTER (WHERE t.type = 'payment_received'), 0) AS total_earnings_sum
+                -- FIX: Total earnings sum should track all money CREDITED from payments
+                COALESCE(SUM(t.amount) FILTER (WHERE t.type = 'payment_received' OR t.type = 'deposit_admin_approved'), 0) AS total_money_credited
             FROM users u
             JOIN providers p ON u.id = p.user_id
             LEFT JOIN wallets w ON w.user_id = u.id
             LEFT JOIN bookings b ON b.provider_id = p.id
-            LEFT JOIN transactions t ON t.user_id = u.id AND t.type = 'payment_received'
+            LEFT JOIN transactions t ON t.user_id = u.id 
             WHERE u.id = $1
             GROUP BY w.balance, p.average_rating, p.review_count;
         `;
@@ -862,7 +933,8 @@ app.get('/api/v1/provider/earnings', auth, async (req, res) => {
                 average_rating: parseFloat(row.average_rating || 0),
                 review_count: parseInt(row.review_count || 0, 10),
                 completed_jobs: parseInt(row.completed_jobs || 0, 10),
-                total_earnings: parseFloat(row.total_earnings_sum || 0),
+                // FIX: Use total_money_credited as total_earnings
+                total_earnings: parseFloat(row.total_money_credited || 0),
             }
         });
 
@@ -1145,8 +1217,7 @@ app.put('/api/v1/bookings/:id', auth, async (req, res) => {
         return res.status(403).json({ msg: 'Access denied. Only providers can update booking status.' });
     }
     
-    // FIX: Updated validStatuses to only contain client-side triggers (rejected, completed, closed) 
-    // The server determines the final status 'awaiting_customer_confirmation'
+    // FIX: Updated validStatuses to contain client-side triggers (rejected, completed, closed, accepted)
     const validStatuses = ['accepted', 'rejected', 'completed', 'closed']; 
     if (!validStatuses.includes(status)) {
         return res.status(400).json({ error: 'Invalid status update provided.' });
@@ -1166,18 +1237,13 @@ app.put('/api/v1/bookings/:id', auth, async (req, res) => {
         
         const provider_id = providerResult.rows[0].id;
         let customer_user_id;
-        let updateQuery = `
-            UPDATE bookings
-            SET updated_at = CURRENT_TIMESTAMP
-            WHERE id = $1 AND provider_id = $2
-            RETURNING customer_id, booking_status, amount;
-        `;
-        let queryParams = [booking_id, provider_id];
+        let updateQuery;
+        let queryParams;
         let nextStatus = status;
 
 
         if (status === 'accepted') {
-            // New logic: Provider sets the price, moves status to AWAITING CUSTOMER CONFIRMATION
+            // Logic: Provider sets the price, moves status to AWAITING CUSTOMER CONFIRMATION
             if (typeof amount !== 'number' || amount <= 0) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ error: 'Amount is required and must be positive when accepting a service.' });
@@ -1201,6 +1267,10 @@ app.put('/api/v1/bookings/:id', auth, async (req, res) => {
                 RETURNING customer_id, booking_status, amount;
             `;
             queryParams = [booking_id, provider_id, nextStatus];
+        } else {
+             // Should not happen due to validation, but ensures safety
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Invalid operation.' });
         }
 
         const result = await client.query(updateQuery, queryParams);
@@ -1777,6 +1847,62 @@ app.post('/api/v1/reviews', auth, async (req, res) => {
 // --- ADMIN ROUTES ---
 
 /**
+ * @route GET /api/v1/admin/overview-metrics
+ * @desc Get key counts for Admin Overview, including pending wallet requests
+ * @access Private (Admin only)
+ */
+app.get('/api/v1/admin/overview-metrics', auth, async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ msg: 'Access denied. Admin role required.' });
+    }
+    
+    try {
+        const totalUsers = await pool.query('SELECT COUNT(id) FROM users');
+        const totalBookings = await pool.query('SELECT COUNT(id) FROM bookings');
+        const pendingVerification = await pool.query('SELECT COUNT(id) FROM providers WHERE is_verified = FALSE');
+        
+        // FIX: Fetch counts of pending wallet requests (Deposit and Withdrawal)
+        const pendingDeposits = await pool.query("SELECT COUNT(id) FROM wallet_requests WHERE status = 'pending' AND type = 'deposit'");
+        const pendingWithdrawals = await pool.query("SELECT COUNT(id) FROM wallet_requests WHERE status = 'pending' AND type = 'withdrawal'");
+
+        res.status(200).json({
+            total_users: parseInt(totalUsers.rows[0].count, 10),
+            total_bookings: parseInt(totalBookings.rows[0].count, 10),
+            pending_verification: parseInt(pendingVerification.rows[0].count, 10),
+            pending_deposits: parseInt(pendingDeposits.rows[0].count, 10),
+            pending_withdrawals: parseInt(pendingWithdrawals.rows[0].count, 10),
+        });
+    } catch (err) {
+        console.error('Admin overview metric fetch error:', err);
+        res.status(500).json({ error: 'Failed to fetch overview metrics.' });
+    }
+});
+
+
+/**
+ * @route GET /api/v1/admin/contact-messages
+ * @desc Get all contact form messages
+ * @access Private (Admin only)
+ */
+app.get('/api/v1/admin/contact-messages', auth, async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ msg: 'Access denied. Admin role required.' });
+    }
+    
+    try {
+        // Assumes contact_messages table exists
+        const query = 'SELECT * FROM contact_messages ORDER BY created_at DESC';
+        const result = await pool.query(query);
+
+        res.status(200).json(result.rows);
+    } catch (err) {
+        console.error('Admin contact message fetch error:', err);
+        res.status(500).json({ error: 'Failed to fetch contact messages.' });
+    }
+});
+
+
+/**
  * @route GET /api/v1/admin/wallet-requests
  * @desc Get all pending wallet requests (deposit/withdrawal)
  * @access Private (Admin only)
@@ -1790,6 +1916,7 @@ app.get('/api/v1/admin/wallet-requests', auth, async (req, res) => {
         const query = `
             SELECT 
                 wr.id, 
+                wr.user_id,
                 wr.type, 
                 wr.amount, 
                 wr.transaction_reference, 
@@ -1841,7 +1968,7 @@ app.put('/api/v1/admin/wallet-requests/:id/approve', auth, async (req, res) => {
 
         const { user_id, type, amount } = request;
         const adjustment = type === 'deposit' ? amount : -amount;
-        const txnType = type === 'deposit' ? 'deposit_admin_approved' : 'withdrawal_admin_approved';
+        const txnType = type === 'deposit' ? 'deposit_admin_approved' : 'withdrawal_sent';
 
         // 2. Update wallet balance
         const walletUpdate = await client.query(

@@ -3,21 +3,22 @@ import React, { useState, useEffect, useCallback, createContext, useContext } fr
 // --- API Configuration ---
 const API_BASE_URL = 'http://localhost:3001/api/v1';
 const CURRENCY_SYMBOL = '₹'; // Indian Rupees
-
+// Mock UPI QR Code URL for deposit - Admin's Account
+// NOTE: Ensure this local image file exists in your project directory
+const MOCK_UPI_QR_CODE_URL = '/qr_code_admin.png'; 
 // --- Global Styling Classes (Dark Cyan Theme) ---
 const DARK_CYAN_CLASS = 'bg-[#008080]'; // Main background/button color
 const DARK_CYAN_TEXT_CLASS = 'text-[#008080]'; // Main text/accent color
 const DARK_CYAN_HOVER_CLASS = 'hover:bg-[#006666]'; // Darker hover state
 
-// Mock UPI QR Code URL for deposit
-const MOCK_UPI_QR_CODE_URL = '/IMG_20251017_234756.jpg';
-
 // --- UTILITY FUNCTIONS ---
 // Helper to safely read nested user profile data
 const getProfileField = (user, field, defaultValue = '') => user?.profile?.[field] || defaultValue;
-// FIX: Corrected column name to profile_picture_url
-const getPhotoUrl = (user) => user?.profile_picture_url || `https://placehold.co/150x150/E0F2F1/008080?text=${user?.email?.charAt(0).toUpperCase() || 'U'}`;
 
+const getPhotoUrl = (user) => {
+    // Uses the corrected database column name 'profile_picture_url'
+    return user?.profile_picture_url || 'https://placehold.co/100x100/F0F4FF/4338CA?text=User';
+};
 
 // --- AUTH CONTEXT ---
 
@@ -48,7 +49,6 @@ const AuthProvider = ({ children }) => {
             const data = await response.json();
             
             if (response.ok) {
-                // User object now uses the correct property name profile_picture_url
                 setUser(data.user_profile);
             } else {
                 logout(); 
@@ -61,7 +61,7 @@ const AuthProvider = ({ children }) => {
         }
     }, [logout]);
     
-    // Fetch unread message count
+    // New: Fetch unread message count (for the bell icon)
     const fetchUnreadCount = useCallback(async (authToken) => {
         if (!authToken || !user || user.role === 'admin') return;
         try {
@@ -86,6 +86,7 @@ const AuthProvider = ({ children }) => {
     useEffect(() => {
         if (!token || loading || user?.role === 'admin') return;
         
+        // Fetch immediately, then set up poll
         fetchUnreadCount(token); 
         
         const interval = setInterval(() => {
@@ -95,7 +96,7 @@ const AuthProvider = ({ children }) => {
         return () => clearInterval(interval);
     }, [token, loading, fetchUnreadCount, user]);
 
-    // Mark messages as read
+    // New: Mark messages as read
     const markMessagesAsRead = useCallback(async (bookingId) => {
         if (!token) return;
         try {
@@ -152,9 +153,9 @@ const AuthProvider = ({ children }) => {
         }
     };
     
-    // OTP Verification during Registration/Password Reset (no changes needed)
+    // New: OTP Verification during Registration
     const verifyOtp = async (email, otp) => {
-        try {
+         try {
             const response = await fetch(`${API_BASE_URL}/auth/verify-otp`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -256,7 +257,7 @@ const Header = ({ setPage }) => {
     return (
         <header className={`${DARK_CYAN_CLASS} text-white shadow-lg sticky top-0 z-50`}>
             <nav className="container mx-auto px-6 py-4 flex justify-between items-center">
-                {/* Home Text Link - Updated Title */}
+                {/* Home Text Link */}
                 <div onClick={() => setPage('home')} className="cursor-pointer text-2xl font-extrabold flex items-center group hover:text-cyan-200 transition">
                     Service Connect
                 </div>
@@ -269,27 +270,31 @@ const Header = ({ setPage }) => {
                 <div className="flex items-center space-x-4">
                     {isAuthenticated ? (
                         <>
-                            {/* Profile Picture in Header */}
-                            <div className="relative group cursor-pointer">
-                                <img 
-                                    src={getPhotoUrl(user)} 
-                                    alt="Profile" 
-                                    className="w-8 h-8 rounded-full object-cover border-2 border-white" 
-                                    onClick={() => setPage(getDashboardPage())}
-                                />
-                                <span className="absolute hidden group-hover:block bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-max bg-gray-800 text-white text-xs rounded py-1 px-2">
-                                    {user.email}
-                                </span>
-                            </div>
+                            {/* FIX: Notification Bell (Only for Customer/Provider) */}
+                            {user.role !== 'admin' && (
+                                <button 
+                                    onClick={() => setPage(getDashboardPage())} 
+                                    title={unreadCount > 0 ? `You have ${unreadCount} unread messages` : "No new notifications"}
+                                    className="relative text-3xl p-1 rounded-full hover:bg-[#006666] transition"
+                                >
+                                    🔔
+                                    {unreadCount > 0 && (
+                                        <span className="absolute top-[-8px] right-[-8px] bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center border-2 border-white">
+                                            {unreadCount > 9 ? '9+' : unreadCount}
+                                        </span>
+                                    )}
+                                </button>
+                            )}
 
-                            <button onClick={() => setPage(getDashboardPage())} className="text-white font-semibold hover:text-cyan-200 transition relative">
+                            {/* Profile Photo in Header */}
+                            <img 
+                                src={getPhotoUrl(user)} 
+                                alt="Profile" 
+                                className="w-8 h-8 rounded-full object-cover border-2 border-white cursor-pointer" 
+                                onClick={() => setPage(getDashboardPage())}
+                            />
+                            <button onClick={() => setPage(getDashboardPage())} className="text-white font-semibold hover:text-cyan-200 transition relative hidden sm:block">
                                 Dashboard
-                                {/* Notification Badge */}
-                                {(user.role !== 'admin' && unreadCount > 0) && (
-                                    <span className="absolute top-[-8px] right-[-12px] bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center border-2 border-white">
-                                        {unreadCount > 9 ? '9+' : unreadCount}
-                                    </span>
-                                )}
                             </button>
                             <button onClick={handleLogout} className="bg-red-500 text-white px-4 py-2 rounded-lg shadow-md hover:bg-red-600 transition">
                                 Logout
@@ -371,11 +376,8 @@ const ProviderCard = ({ provider, onClick }) => (
     <div onClick={() => onClick(provider)} className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300 cursor-pointer flex flex-col p-4 space-y-3 border border-gray-200 min-w-[280px]">
         
         <div className="flex items-center space-x-3">
-             {/* Use actual profile photo URL */}
-            <img 
-                className="w-16 h-16 rounded-full object-cover shadow-md" 
-                // FIX: Corrected column name to profile_picture_url
-                src={provider.profile_picture_url || `https://placehold.co/150x150/E0F2F1/008080?text=${provider.display_name.charAt(0)}`}
+            <img className="w-16 h-16 rounded-full object-cover shadow-md" 
+                src={provider.profile_picture_url || `https://placehold.co/150x150/E0E7FF/4338CA?text=${provider.display_name.charAt(0)}`} 
                 alt={provider.display_name} 
             />
             <div className="flex-grow">
@@ -425,6 +427,376 @@ const Modal = ({ title, children, onClose }) => (
         </div>
     </div>
 );
+
+const SetPriceModal = ({ booking, onClose, onPriceSet }) => {
+    const { token } = useAuth();
+    const [amount, setAmount] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    
+    const handleSetPrice = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+
+        const finalAmount = parseFloat(amount);
+        if (isNaN(finalAmount) || finalAmount <= 0) {
+            setError('Please enter a valid positive amount.');
+            setLoading(false);
+            return;
+        }
+
+        try {
+            // Logic: Provider sets the price, moves status to 'awaiting_customer_confirmation'
+            const response = await fetch(`${API_BASE_URL}/bookings/${booking.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                body: JSON.stringify({ status: 'accepted', amount: finalAmount }),
+            });
+            const data = await response.json();
+
+            if (response.ok) {
+                setSuccess(`Price of ${CURRENCY_SYMBOL}${finalAmount.toFixed(2)} set. Customer notified for confirmation.`);
+                setTimeout(() => onPriceSet(), 2000);
+            } else {
+                setError(data.error || 'Failed to set price.');
+            }
+        } catch (err) {
+            setError('Network error occurred.');
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    return (
+        <Modal title={`Set Price for Booking #${booking.id}`} onClose={onClose}>
+            <p className="text-gray-600 mb-4">Set the final service price. The customer must confirm this price before the booking status moves to 'Accepted'.</p>
+            {error && <ErrorMessage message={error} />}
+            {success && <SuccessMessage message={success} />}
+            <form onSubmit={handleSetPrice} className="space-y-4">
+                 <div>
+                    <label htmlFor="amount" className="block text-sm font-semibold text-gray-700">Final Price ({CURRENCY_SYMBOL})</label>
+                    <input 
+                        id="amount" 
+                        name="amount" 
+                        type="number" 
+                        step="0.01"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        required 
+                        className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg text-lg" 
+                        placeholder="e.g., 5000.00"
+                    />
+                </div>
+                <button type="submit" disabled={loading} className={`w-full ${DARK_CYAN_CLASS} text-white font-bold py-3 rounded-lg ${DARK_CYAN_HOVER_CLASS} transition disabled:bg-gray-400`}>
+                    {loading ? 'Submitting Price...' : 'Submit Price & Await Confirmation'}
+                </button>
+            </form>
+        </Modal>
+    );
+};
+
+
+const BookingModal = ({ provider, service, onClose, onBooked, navigate }) => { 
+    const { token, user } = useAuth();
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+
+    const handleBookingSuccess = () => {
+        onClose();
+        navigate('customerDashboard');
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        
+        const bookingData = {
+            provider_id: provider.id,
+            service_id: service.id,
+            scheduled_at: e.target.scheduled_at.value,
+            address: e.target.address.value,
+            customer_notes: e.target.customer_notes.value,
+            service_description: e.target.service_description.value, 
+        };
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/bookings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                body: JSON.stringify(bookingData),
+            });
+            const data = await response.json();
+
+            if (response.ok) {
+                setSuccess(`Request sent! ID: ${data.booking_id}. Provider will review shortly.`);
+                setTimeout(() => handleBookingSuccess(), 2000); 
+            } else {
+                setError(data.error || 'Failed to send booking request.');
+            }
+        } catch (err) {
+            setError('Network error occurred during booking.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (!user) return <ErrorMessage message="You must be logged in to book a service." />;
+
+    // Use default location from user profile
+    const defaultLat = getProfileField(user, 'location_lat', 'N/A');
+    const defaultLon = getProfileField(user, 'location_lon', 'N/A');
+    const defaultAddress = getProfileField(user, 'address_line_1', '');
+    const defaultCity = getProfileField(user, 'city', '');
+    const fullAddress = defaultAddress + (defaultCity ? `, ${defaultCity}` : '');
+
+    return (
+        <Modal title={`Book ${service.name} with ${provider.display_name}`} onClose={onClose}>
+            {error && <ErrorMessage message={error} />}
+            {success && <SuccessMessage message={success} />}
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <p className="text-sm text-gray-600">**Important:** Your default location is set to ({defaultLat}, {defaultLon}). Update it in your dashboard if needed.</p>
+                <div>
+                    <label htmlFor="scheduled_at" className="block text-sm font-semibold text-gray-700">Scheduled Date & Time</label>
+                    <input id="scheduled_at" name="scheduled_at" type="datetime-local" required className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" />
+                </div>
+                <div>
+                    <label htmlFor="address" className="block text-sm font-semibold text-gray-700">Service Address</label>
+                    <input id="address" name="address" type="text" defaultValue={fullAddress} required className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" />
+                </div>
+                 <div>
+                    <label htmlFor="service_description" className="block text-sm font-semibold text-gray-700">Detailed Service Description (What do you need done?)</label>
+                    <textarea id="service_description" name="service_description" rows="3" required className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="e.g., Leaking faucet in the kitchen sink. Requires immediate attention."></textarea>
+                </div>
+                <div>
+                    <label htmlFor="customer_notes" className="block text-sm font-semibold text-gray-700">Additional Notes (Optional)</label>
+                    <textarea id="customer_notes" name="customer_notes" rows="2" className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
+                </div>
+                <button type="submit" disabled={loading} className={`w-full ${DARK_CYAN_CLASS} text-white font-bold py-3 rounded-lg ${DARK_CYAN_HOVER_CLASS} transition disabled:bg-gray-400`}>
+                    {loading ? 'Sending Request...' : 'Confirm & Send Request'}
+                </button>
+            </form>
+        </Modal>
+    );
+};
+
+const ReviewAndPaymentModal = ({ booking, onClose, onCompleted }) => {
+    const { token, user } = useAuth();
+    const [rating, setRating] = useState(0); 
+    const [comment, setComment] = useState('');
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [isPaid, setIsPaid] = useState(booking.booking_status === 'closed');
+    const [isReviewed, setIsReviewed] = useState(false); 
+    
+    useEffect(() => {
+        setIsPaid(booking.booking_status === 'closed');
+    }, [booking.booking_status]);
+
+    const handlePayment = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/payments`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                body: JSON.stringify({ booking_id: booking.id }), 
+            });
+            const data = await response.json();
+
+            if (response.ok) {
+                setSuccess(`Payment successful! Amount debited from your wallet. You can now optionally leave a review.`);
+                setIsPaid(true);
+                onCompleted(); 
+            } else {
+                setError(data.error || 'Payment failed. Check your wallet balance.');
+            }
+        } catch (err) {
+            setError('Network error during payment processing.');
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    const handleReviewSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        setSuccess('');
+
+        if (!isPaid) {
+            setError('Please complete the payment first before submitting a review.');
+            setLoading(false);
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/reviews`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                body: JSON.stringify({ 
+                    booking_id: booking.id, 
+                    rating: rating, 
+                    comment: comment 
+                }),
+            });
+            const data = await response.json();
+            
+            if (response.ok) {
+                setSuccess(data.message);
+                setIsReviewed(true);
+                onCompleted(); 
+            } else {
+                setError(data.error || 'Review submission failed. This booking may already be reviewed.');
+            }
+        } catch (err) {
+            setError('Network error during review submission.');
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    // Star rating component for re-use
+    const StarRating = () => (
+        <div className="flex justify-center space-x-1">
+            {[1, 2, 3, 4, 5].map((star) => (
+                <span 
+                    key={star} 
+                    onClick={() => setRating(star)}
+                    className={`cursor-pointer text-3xl transition ${star <= rating ? 'text-amber-400' : 'text-gray-300 hover:text-amber-300'}`}
+                >
+                    &#9733;
+                </span>
+            ))}
+        </div>
+    );
+    
+    const isPaymentPending = booking.booking_status === 'completed' && !isPaid;
+    const isReadyToReview = isPaid && !isReviewed && booking.booking_status === 'closed'; // Only allow review if paid AND closed (final status)
+
+    return (
+        <Modal title={`Payment & Review for Booking #${booking.id}`} onClose={onClose}>
+            {error && <ErrorMessage message={error} />}
+            {success && <SuccessMessage message={success} />}
+
+            {/* --- Payment Section (Only visible if not yet paid) --- */}
+            {isPaymentPending && (
+                <div className="bg-red-50 p-4 rounded-lg mb-4 border border-red-200">
+                    <h3 className="text-xl font-bold text-red-700 mb-3">1. Complete Payment (Required)</h3>
+                    <p className="mb-3 text-gray-700">
+                        Final Service Fee: **{CURRENCY_SYMBOL}{parseFloat(booking.amount || 0).toFixed(2)}**
+                    </p>
+                    <button onClick={handlePayment} disabled={loading} className="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition disabled:bg-gray-400">
+                        {loading ? 'Processing...' : `Pay ${CURRENCY_SYMBOL}${parseFloat(booking.amount || 0).toFixed(2)} from Wallet`}
+                    </button>
+                </div>
+            )}
+            
+            {/* --- Review Section (Only visible after successful payment or if already paid) --- */}
+            {isReadyToReview && (
+                <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                    <h3 className="text-xl font-bold text-amber-700 mb-3">2. Optional Review</h3>
+                    <form onSubmit={handleReviewSubmit} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2 text-center">Your Rating</label>
+                            <StarRating />
+                            <p className="text-center text-sm text-gray-500 mt-1">({rating} out of 5)</p>
+                        </div>
+                        <div>
+                            <label htmlFor="comment" className="block text-sm font-semibold text-gray-700">Comment (Optional)</label>
+                            <textarea id="comment" name="comment" rows="3" value={comment} onChange={(e) => setComment(e.target.value)} className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="Share your experience..."></textarea>
+                        </div>
+                        <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400">
+                            {loading ? 'Submitting...' : 'Submit Review (Optional)'}
+                        </button>
+                    </form>
+                </div>
+            )}
+            
+            {(booking.booking_status === 'closed' && !isReadyToReview) && (
+                <SuccessMessage message="This booking is closed and payment is complete. You may have already submitted a review." />
+            )}
+            
+            <div className="mt-4 text-right">
+                <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700 font-medium">Close</button>
+            </div>
+
+        </Modal>
+    );
+};
+
+const PriceConfirmationModal = ({ booking, onClose, onConfirmed }) => {
+    const { token } = useAuth();
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+
+    const handleConfirm = async (accepted) => {
+        setLoading(true);
+        setError('');
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/bookings/${booking.id}/confirm-price`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                body: JSON.stringify({ accepted }),
+            });
+            const data = await response.json();
+
+            if (response.ok) {
+                setSuccess(data.message);
+                setTimeout(() => onConfirmed(), 2000); 
+            } else {
+                setError(data.error || 'Failed to process confirmation.');
+            }
+        } catch (err) {
+            setError('Network error occurred.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <Modal title={`Confirm Price for Booking #${booking.id}`} onClose={onClose}>
+            {error && <ErrorMessage message={error} />}
+            {success && <SuccessMessage message={success} />}
+            
+            <div className="space-y-4">
+                <p className="text-lg text-slate-800 font-semibold">
+                    Provider's Quoted Price: 
+                    <span className="text-green-600 ml-2 text-2xl font-bold">{CURRENCY_SYMBOL}{parseFloat(booking.amount || 0).toFixed(2)}</span>
+                </p>
+                <p className="text-gray-600">
+                    If you accept, the service will be officially **Accepted**, and the chat will open for coordination. If you reject, the booking will be **Rejected** and cancelled.
+                </p>
+                
+                <div className="flex space-x-4 pt-4">
+                    <button 
+                        onClick={() => handleConfirm(true)} 
+                        disabled={loading}
+                        className="flex-1 bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition disabled:bg-gray-400"
+                    >
+                        {loading ? 'Confirming...' : 'Accept Price'}
+                    </button>
+                    <button 
+                        onClick={() => handleConfirm(false)} 
+                        disabled={loading}
+                        className="flex-1 bg-red-500 text-white font-bold py-3 rounded-lg hover:bg-red-600 transition disabled:bg-gray-400"
+                    >
+                        Reject Price
+                    </button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
 
 const ChatComponent = ({ booking, onClose, isCustomer }) => {
     const { token, user, markMessagesAsRead } = useAuth();
@@ -539,9 +911,9 @@ const ChatComponent = ({ booking, onClose, isCustomer }) => {
     const isChatActive = booking.booking_status === 'accepted' || booking.booking_status === 'closed' || booking.booking_status === 'completed';
 
     const renderFileContent = (msg) => {
-        if (!msg.file_url || msg.file_url === 'pending') return null;
+        if (!msg.file_url) return null;
 
-        // Check file extension for image, since backend returns a full URL, not a data URI.
+        // FIX: Check file extension for image, since backend returns a full URL
         const isImage = /\.(jpe?g|png|gif|webp)$/i.test(msg.file_url); 
         const fileName = msg.content.replace('File uploaded: ', '');
 
@@ -557,10 +929,11 @@ const ChatComponent = ({ booking, onClose, isCustomer }) => {
                         className="max-w-full h-auto rounded-md cursor-pointer"
                     />
                 ) : (
-                    <a href={msg.file_url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-500 truncate block font-mono hover:underline">
-                        {fileName} (Click to View)
-                    </a>
+                    <p className="text-sm text-blue-500 truncate block font-mono">
+                        {fileName}
+                    </p>
                 )}
+                {/* Fallback for file messages without content */}
                 <p className="text-sm mt-1">{msg.content}</p>
             </div>
         );
@@ -643,14 +1016,14 @@ const ChatComponent = ({ booking, onClose, isCustomer }) => {
 
 
 const BookingCard = ({ booking, handleAction, isCustomer, onReviewModalOpen, onChatModalOpen, onPriceConfirmationOpen, onSetPriceOpen }) => {
-    // Helper to determine color based on status (no changes needed)
+    // Helper to determine color based on status
     const getStatusClasses = (status) => {
         switch (status) {
             case 'pending_provider': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
             case 'awaiting_customer_confirmation': return 'bg-purple-100 text-purple-800 border-purple-300 animate-pulse'; 
             case 'accepted': return 'bg-blue-100 text-blue-800 border-blue-300';
-            case 'completed': return 'bg-red-100 text-red-800 border-red-300'; 
-            case 'closed': return 'bg-green-100 text-green-800 border-green-300'; 
+            case 'completed': return 'bg-red-100 text-red-800 border-red-300'; // Completed/Unpaid
+            case 'closed': return 'bg-green-100 text-green-800 border-green-300'; // Paid/Closed
             case 'rejected': return 'bg-gray-200 text-gray-700 border-gray-400';
             default: return 'bg-gray-100 text-gray-600 border-gray-300';
         }
@@ -671,7 +1044,7 @@ const BookingCard = ({ booking, handleAction, isCustomer, onReviewModalOpen, onC
     const customerActions = (
         <div className="flex flex-col space-y-3">
             
-            {/* Price Confirmation (New feature) */}
+            {/* Price Confirmation */}
             {booking.booking_status === 'awaiting_customer_confirmation' && (
                 <button 
                     className="text-white px-4 py-2 rounded-lg font-semibold transition shadow-md bg-purple-600 hover:bg-purple-700"
@@ -681,7 +1054,7 @@ const BookingCard = ({ booking, handleAction, isCustomer, onReviewModalOpen, onC
                 </button>
             )}
 
-            {/* Review & Payment button (Active when completed/unpaid) */}
+            {/* Review & Payment button */}
             {booking.booking_status === 'completed' && (
                  <button 
                     className="text-white px-4 py-2 rounded-lg font-semibold transition shadow-md bg-red-500 hover:bg-red-600"
@@ -691,7 +1064,7 @@ const BookingCard = ({ booking, handleAction, isCustomer, onReviewModalOpen, onC
                 </button>
             )}
             
-            {/* Chat button (Active when accepted or closed) */}
+            {/* Chat button */}
             {(booking.booking_status === 'accepted' || booking.booking_status === 'closed' || booking.booking_status === 'completed') && (
                  <button 
                     className={`${DARK_CYAN_CLASS} text-white px-4 py-2 rounded-lg font-semibold ${DARK_CYAN_HOVER_CLASS} transition shadow-md`}
@@ -733,7 +1106,7 @@ const BookingCard = ({ booking, handleAction, isCustomer, onReviewModalOpen, onC
                         onClick={() => handleAction(booking.id, 'completed')} 
                         className="bg-red-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-700 transition shadow-md"
                     >
-                        Mark Completed
+                        Mark Completed (Awaiting Payment)
                     </button>
                     <button 
                         className={`${DARK_CYAN_CLASS} text-white px-4 py-2 rounded-lg font-semibold ${DARK_CYAN_HOVER_CLASS} transition shadow-md`}
@@ -743,6 +1116,22 @@ const BookingCard = ({ booking, handleAction, isCustomer, onReviewModalOpen, onC
                     </button>
                  </div>
             )}
+
+            {(booking.booking_status === 'completed' || booking.booking_status === 'closed') && (
+                 <button 
+                    className={`${DARK_CYAN_CLASS} text-white px-4 py-2 rounded-lg font-semibold ${DARK_CYAN_HOVER_CLASS} transition shadow-md`}
+                    onClick={() => onChatModalOpen(booking)}
+                >
+                    Chat Now / View
+                </button>
+            )}
+            
+            {(booking.booking_status === 'completed' || booking.booking_status === 'closed') && (
+                <p className={`font-semibold text-sm text-center p-2 rounded-lg ${booking.booking_status === 'completed' ? 'text-red-500 bg-red-100' : 'text-green-600 bg-green-100'}`}>
+                    Status: {booking.booking_status === 'completed' ? 'Awaiting Customer Payment' : 'PAID & CLOSED'}
+                </p>
+            )}
+
         </div>
     );
 
@@ -785,6 +1174,7 @@ const BookingCard = ({ booking, handleAction, isCustomer, onReviewModalOpen, onC
 
 const CustomerProfileManagement = () => {
     const { user, token, fetchUserProfile } = useAuth();
+    // Setting initial state: full_name should be empty string if null/undefined
     const [profileData, setProfileData] = useState({
         email: user?.email || '',
         full_name: getProfileField(user, 'full_name', ''), 
@@ -795,7 +1185,7 @@ const CustomerProfileManagement = () => {
         location_lon: getProfileField(user, 'location_lon', 0),
     });
     
-    const [profilePhoto, setProfilePhoto] = useState(null); // New state for file input
+    const [profilePhotoFile, setProfilePhotoFile] = useState(null);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [loading, setLoading] = useState(false);
@@ -817,13 +1207,15 @@ const CustomerProfileManagement = () => {
     const handleChange = (e) => {
         setProfileData({ ...profileData, [e.target.name]: e.target.value });
     };
-    
-    const handleFileChange = (e) => {
-        setProfilePhoto(e.target.files[0]);
+
+    const handlePhotoChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            setProfilePhotoFile(file);
+        }
     };
     
-    // Handles update of customer details (email/name/address)
-    const handleDetailSubmit = async (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
         setError(''); setSuccess(''); setLoading(true);
 
@@ -834,8 +1226,8 @@ const CustomerProfileManagement = () => {
         }
         
         try {
-            // This endpoint handles text data only
-            const response = await fetch(`${API_BASE_URL}/user/profile`, {
+            // 1. Update text profile details
+            let response = await fetch(`${API_BASE_URL}/user/profile`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -844,91 +1236,71 @@ const CustomerProfileManagement = () => {
                 body: JSON.stringify(dataToSend),
             });
             
-            const data = await response.json();
+            let data = await response.json();
             
-            if (response.ok) {
-                setSuccess('Profile details updated! Please wait for data refresh.');
-                await fetchUserProfile(token); 
-            } else {
-                setError(data.error || 'Failed to update profile details. Email might be in use.');
+            if (!response.ok) {
+                 throw new Error(data.error || 'Failed to update basic profile.');
             }
+
+            // 2. Upload photo if file exists
+            if (profilePhotoFile) {
+                const formData = new FormData();
+                formData.append('profile_photo', profilePhotoFile);
+                
+                response = await fetch(`${API_BASE_URL}/user/profile-photo`, {
+                    method: 'POST',
+                    headers: { 'x-auth-token': token },
+                    body: formData,
+                });
+                
+                data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to upload profile photo.');
+                }
+            }
+            
+            setSuccess('Profile updated successfully! Refreshing data...');
+            await fetchUserProfile(token); 
+            setProfilePhotoFile(null); // Clear file input
+            
         } catch (err) {
-            setError('A network error occurred while submitting the update.');
+            setError(err.message || 'A network error occurred while submitting the update.');
         } finally {
             setLoading(false);
         }
     };
     
-    // Handles photo upload separately
-    const handlePhotoSubmit = async (e) => {
-         e.preventDefault();
-         if (!profilePhoto) return;
-         setError(''); setSuccess(''); setLoading(true);
-
-         const formData = new FormData();
-         formData.append('profile_photo', profilePhoto); // NOTE: Backend expects 'profile_photo' field name
-         
-         try {
-            const response = await fetch(`${API_BASE_URL}/user/profile-photo`, {
-                method: 'POST', // Use POST for photo upload endpoint
-                headers: { 'x-auth-token': token },
-                body: formData,
-            });
-            const data = await response.json();
-            
-            if (response.ok) {
-                setSuccess('Profile photo uploaded successfully!');
-                setProfilePhoto(null); 
-                await fetchUserProfile(token); 
-            } else {
-                setError(data.error || 'Failed to upload photo. Check file size/type.');
-            }
-         } catch (err) {
-             setError('A network error occurred during photo upload.');
-         } finally {
-             setLoading(false);
-         }
-    }
-    
     return (
         <div className="space-y-6">
             <h2 className="text-2xl font-bold text-slate-700">Account & Location Settings</h2>
+            <p className="text-gray-600">Update your email, contact details, and default service location.</p>
             
             {error && <ErrorMessage message={error}/>}
             {success && <SuccessMessage message={success}/>}
             
-            {/* PROFILE PHOTO FORM */}
-            <div className="space-y-4 bg-white p-6 rounded-xl border max-w-2xl">
-                 <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>Profile Photo</h3>
-                 <form onSubmit={handlePhotoSubmit} className="space-y-4">
-                     <div className="flex items-center space-x-4">
-                         <img 
-                            src={getPhotoUrl(user)} 
-                            alt="Current Profile" 
-                            className="w-20 h-20 rounded-full object-cover shadow-md border-2 border-white ring-2 ring-cyan-500" 
-                        />
-                        <label htmlFor="profile_photo_file" className="cursor-pointer bg-blue-100 text-blue-700 px-4 py-2 rounded-lg font-semibold hover:bg-blue-200 transition">
-                            {profilePhoto ? `Selected: ${profilePhoto.name.substring(0, 15)}...` : 'Change Photo (Max 5MB)'}
-                        </label>
+            <form onSubmit={handleSubmit} className="space-y-6 bg-gray-50 p-6 rounded-xl border max-w-2xl">
+                
+                <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>Profile Picture</h3>
+                <div className="flex items-center space-x-6">
+                    <img 
+                        src={profilePhotoFile ? URL.createObjectURL(profilePhotoFile) : getPhotoUrl(user)} 
+                        alt="Current Profile" 
+                        className="w-24 h-24 rounded-full object-cover shadow-lg border-4 border-white ring-2 ring-cyan-500" 
+                    />
+                    <div>
                         <input 
-                            id="profile_photo_file" 
-                            name="profile_photo_file" 
+                            id="profile_photo"
                             type="file" 
-                            onChange={handleFileChange}
-                            className="hidden" 
                             accept="image/*"
+                            onChange={handlePhotoChange}
+                            className="text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-cyan-50 file:text-cyan-700 hover:file:bg-cyan-100"
                             disabled={loading}
                         />
-                         <button type="submit" disabled={loading || !profilePhoto} className={`px-4 py-2 text-sm bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition disabled:bg-gray-400`}>
-                             {loading ? 'Uploading...' : 'Save Photo'}
-                         </button>
-                     </div>
-                 </form>
-            </div>
+                        {profilePhotoFile && <p className="text-sm text-green-600 mt-1">Ready to upload: {profilePhotoFile.name}</p>}
+                    </div>
+                </div>
 
-            {/* DETAIL UPDATE FORM */}
-            <form onSubmit={handleDetailSubmit} className="space-y-6 bg-gray-50 p-6 rounded-xl border max-w-2xl">
-                <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>Account Details</h3>
+                <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2 pt-4`}>Account Details</h3>
                 <div>
                     <label htmlFor="email" className="block text-sm font-semibold text-gray-700">Email Address (Login)</label>
                     <input 
@@ -985,7 +1357,7 @@ const CustomerProfileManagement = () => {
                 <p className="text-sm text-gray-500">Your Role: <span className={`font-semibold ${DARK_CYAN_TEXT_CLASS}`}>{user?.role?.toUpperCase()}</span></p>
                 
                 <button type="submit" disabled={loading} className={`w-full ${DARK_CYAN_CLASS} text-white font-bold py-3 rounded-lg ${DARK_CYAN_HOVER_CLASS} transition shadow-md disabled:bg-gray-400`}>
-                    {loading ? 'Saving...' : 'Update Profile Details'}
+                    {loading ? 'Saving...' : 'Update Profile'}
                 </button>
             </form>
         </div>
@@ -995,15 +1367,14 @@ const CustomerProfileManagement = () => {
 const CustomerWallet = ({ fetchBookings }) => {
     const { token, user } = useAuth();
     const [balance, setBalance] = useState(0);
-    const [loading, setLoading] = useState(true);
-    
-    // Deposit Request State
     const [depositAmount, setDepositAmount] = useState('');
-    const [transactionReference, setTransactionReference] = useState('');
+    const [depositTxnRef, setDepositTxnRef] = useState('');
     const [screenshotFile, setScreenshotFile] = useState(null);
+    const [loading, setLoading] = useState(true);
     const [depositLoading, setDepositLoading] = useState(false);
-    const [depositError, setDepositError] = useState('');
-    const [depositSuccess, setDepositSuccess] = useState('');
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
 
     const fetchWallet = useCallback(async () => {
         if (!token) return;
@@ -1013,9 +1384,12 @@ const CustomerWallet = ({ fetchBookings }) => {
             if (res.ok) {
                 const data = await res.json();
                 setBalance(data.balance);
-            } 
+                setPendingRequestsCount(data.pending_requests_count || 0);
+            } else {
+                setError('Failed to fetch wallet data.');
+            }
         } catch (err) {
-            console.error('Network error fetching wallet.');
+            setError('Network error fetching wallet.');
         } finally {
             setLoading(false);
         }
@@ -1028,27 +1402,31 @@ const CustomerWallet = ({ fetchBookings }) => {
     const handleDepositRequest = async (e) => {
         e.preventDefault();
         setDepositLoading(true);
-        setDepositError(''); setDepositSuccess('');
+        setError(''); setSuccess('');
         const amount = parseFloat(depositAmount);
 
-        if (isNaN(amount) || amount <= 1) {
-            setDepositError('Deposit amount must be more than ₹1.');
+        if (isNaN(amount) || amount <= 0) {
+            setError('Please enter a valid positive amount.');
+            setDepositLoading(false);
+            return;
+        }
+        if (!depositTxnRef) {
+            setError('Please enter the UPI transaction reference.');
             setDepositLoading(false);
             return;
         }
         if (!screenshotFile) {
-            setDepositError('Please upload a screenshot of your payment.');
+            setError('Please upload the payment screenshot.');
             setDepositLoading(false);
             return;
         }
-
+        
         const formData = new FormData();
         formData.append('amount', amount);
-        formData.append('transaction_reference', transactionReference);
-        formData.append('screenshot_file', screenshotFile); // NOTE: Backend expects 'screenshot_file' field name
+        formData.append('transaction_reference', depositTxnRef);
+        formData.append('screenshot_file', screenshotFile);
 
         try {
-            // FIX: Corrected API path
             const response = await fetch(`${API_BASE_URL}/customer/wallet/deposit-request`, {
                 method: 'POST',
                 headers: { 'x-auth-token': token },
@@ -1057,15 +1435,16 @@ const CustomerWallet = ({ fetchBookings }) => {
             const data = await response.json();
             
             if (response.ok) {
-                setDepositSuccess(data.message);
+                setSuccess(data.message);
                 setDepositAmount('');
-                setTransactionReference('');
+                setDepositTxnRef('');
                 setScreenshotFile(null);
+                await fetchWallet();
             } else {
-                setDepositError(data.error || 'Deposit request failed.');
+                setError(data.error || 'Deposit request failed.');
             }
         } catch (err) {
-            setDepositError('Network error during deposit request.');
+            setError('Network error during deposit request.');
         } finally {
             setDepositLoading(false);
         }
@@ -1077,64 +1456,76 @@ const CustomerWallet = ({ fetchBookings }) => {
             <h2 className="text-2xl font-bold text-slate-700">My Wallet</h2>
             
             <div className={`${DARK_CYAN_CLASS} text-white p-6 rounded-xl shadow-lg border-2 border-cyan-800 flex justify-between items-center`}>
-                <p className="text-sm font-medium opacity-90">Current Balance</p>
+                <div>
+                    <p className="text-sm font-medium opacity-90">Current Balance</p>
+                    {pendingRequestsCount > 0 && <p className="text-xs font-medium text-yellow-300">{pendingRequestsCount} Deposit Request(s) Pending Admin Approval</p>}
+                </div>
                 {loading ? <p className="text-2xl font-extrabold">Loading...</p> : (
                     <h3 className="text-4xl font-extrabold">{CURRENCY_SYMBOL}{balance.toFixed(2)}</h3>
                 )}
             </div>
             
-            <div className="bg-gray-50 p-6 rounded-xl border max-w-3xl">
-                <h3 className={`text-xl font-semibold ${DARK_CYAN_TEXT_CLASS} mb-4 border-b pb-2`}>Request Wallet Top-Up (Admin-Verified)</h3>
+            <div className="bg-gray-50 p-6 rounded-xl border max-w-4xl">
+                <h3 className={`text-xl font-semibold ${DARK_CYAN_TEXT_CLASS} mb-4 border-b pb-2`}>Deposit Funds (Admin Approval Required)</h3>
                 
-                <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-6 mb-6">
-                    <div className="md:w-1/2 text-center bg-white p-4 rounded-lg shadow-inner">
-                        <p className="font-bold text-lg mb-2">Step 1: Pay to QR Code</p>
+                <div className="flex flex-col md:flex-row gap-6">
+                    {/* QR Code and Instructions */}
+                    <div className="md:w-1/2 text-center bg-white p-4 rounded-lg shadow-inner border border-gray-100">
+                        <p className="font-bold text-lg mb-2 text-cyan-700">Step 1: Pay to Platform UPI ID</p>
                         <img 
                             src={MOCK_UPI_QR_CODE_URL} 
                             alt="Mock UPI QR Code" 
                             className="w-40 h-40 mx-auto object-contain border-4 border-gray-200 rounded-lg mb-2" 
                         />
-                        <p className="text-sm text-gray-600">Scan this code using any UPI App (PhonePe, Google Pay, etc.) and complete your payment.</p>
+                        <p className="text-sm text-gray-600">Scan this code using any UPI App and complete your payment.</p>
+                        <p className="text-xs text-red-500 mt-2 font-medium">NOTE: Payment is sent to the **Platform Admin**. Funds are not available until Admin verifies the transaction proof.</p>
                     </div>
+
+                    {/* Deposit Request Form */}
                     <div className="md:w-1/2">
-                        <p className="font-bold text-lg mb-2">Step 2: Submit Proof to Admin</p>
-                        {depositError && <ErrorMessage message={depositError}/>}
-                        {depositSuccess && <SuccessMessage message={depositSuccess}/>}
-                        <form onSubmit={handleDepositRequest} className="space-y-3">
-                            <input 
-                                type="number" 
-                                step="0.01" 
-                                value={depositAmount}
-                                onChange={(e) => setDepositAmount(e.target.value)}
-                                required
-                                placeholder={`${CURRENCY_SYMBOL} Amount Paid`}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                                disabled={depositLoading}
-                            />
-                            <input 
-                                type="text" 
-                                value={transactionReference}
-                                onChange={(e) => setTransactionReference(e.target.value)}
-                                required
-                                placeholder="UPI/Bank Transaction Reference"
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                                disabled={depositLoading}
-                            />
-                            <label className="block text-sm font-semibold text-gray-700 pt-1">
-                                Upload Screenshot Proof (Required)
-                            </label>
-                            <input 
-                                type="file"
-                                onChange={(e) => setScreenshotFile(e.target.files[0])}
-                                required={!screenshotFile}
-                                className="w-full border p-2 rounded-lg bg-white"
-                                accept="image/*"
-                                disabled={depositLoading}
-                            />
-                            <button type="submit" disabled={depositLoading} className={`w-full bg-blue-600 text-white font-bold px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400`}>
-                                {depositLoading ? 'Submitting Request...' : 'Submit Deposit Request'}
+                        <p className="font-bold text-lg mb-4 text-cyan-700 border-b pb-1">Step 2: Submit Proof</p>
+                        {error && <ErrorMessage message={error}/>}
+                        {success && <SuccessMessage message={success}/>}
+                        <form onSubmit={handleDepositRequest} className="space-y-4">
+                             <div>
+                                <label className="block text-sm font-semibold text-gray-700">Amount Paid ({CURRENCY_SYMBOL})</label>
+                                <input 
+                                    type="number" 
+                                    step="0.01" 
+                                    value={depositAmount}
+                                    onChange={(e) => setDepositAmount(e.target.value)}
+                                    required
+                                    placeholder={`${CURRENCY_SYMBOL} 500.00`}
+                                    className="block w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                    disabled={depositLoading}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700">UPI Transaction Reference/ID</label>
+                                <input 
+                                    type="text" 
+                                    value={depositTxnRef}
+                                    onChange={(e) => setDepositTxnRef(e.target.value)}
+                                    required
+                                    placeholder="E.g., 510425378214"
+                                    className="block w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                    disabled={depositLoading}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700">Payment Screenshot Proof</label>
+                                <input 
+                                    type="file" 
+                                    accept="image/*"
+                                    onChange={(e) => setScreenshotFile(e.target.files[0])}
+                                    required
+                                    className="block w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700"
+                                    disabled={depositLoading}
+                                />
+                            </div>
+                            <button type="submit" disabled={depositLoading} className="w-full bg-blue-600 text-white font-bold px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400">
+                                {depositLoading ? 'Submitting Proof...' : 'Request Wallet Deposit'}
                             </button>
-                            <p className="text-xs text-red-500 pt-1">Requests are manually reviewed by Admin. Funds will be credited within 24 hours of submission.</p>
                         </form>
                     </div>
                 </div>
@@ -1144,19 +1535,166 @@ const CustomerWallet = ({ fetchBookings }) => {
 };
 
 
+const CustomerFindServices = ({ setPage }) => (
+    <div className="space-y-6">
+        <h2 className="text-2xl font-bold text-slate-700">Find New Services</h2>
+        <p className="text-gray-600">Need help with a home repair, maintenance, or consultation? Find trusted local professionals here.</p>
+        
+        <div className="bg-blue-50 p-6 rounded-xl border border-blue-200 flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
+            <p className="text-lg font-semibold text-blue-800">Explore all categories now!</p>
+            <button 
+                onClick={() => setPage('allServices')}
+                className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 transition shadow-md w-full sm:w-auto"
+            >
+                Browse Services
+            </button>
+        </div>
+    </div>
+);
+
+
+const CustomerBookingHistory = () => {
+    const { token, user } = useAuth();
+    const [bookings, setBookings] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [activeModal, setActiveModal] = useState(null);
+    const [selectedBooking, setSelectedBooking] = useState(null);
+    
+    const fetchBookings = useCallback(async () => {
+        if (!token || user?.role !== 'customer') return;
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch(`${API_BASE_URL}/customer/bookings`, { 
+                headers: { 'x-auth-token': token },
+            });
+            
+            if (!res.ok) {
+                 const errorText = await res.json();
+                 throw new Error(errorText.error || `Failed to fetch bookings. Status: ${res.status}`);
+            }
+            
+            const data = await res.json();
+            setBookings(data.bookings || []);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [token, user]);
+
+    useEffect(() => {
+        fetchBookings();
+    }, [fetchBookings]);
+    
+    const handleReviewModalOpen = (booking) => {
+        setSelectedBooking(booking);
+        setActiveModal('review');
+    };
+    
+    const handleChatModalOpen = (booking) => {
+        setSelectedBooking(booking);
+        setActiveModal('chat');
+    };
+    
+    const handlePriceConfirmationOpen = (booking) => {
+        setSelectedBooking(booking);
+        setActiveModal('confirmPrice');
+    };
+
+
+    return (
+        <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-slate-700">Your Booking History</h2>
+            <p className="text-gray-600">Track the status of your requested services and access chat and payment options.</p>
+            
+            {error && <ErrorMessage message={error}/>}
+            {loading && <Spinner />}
+            
+            {!loading && bookings.length === 0 && <p className="text-center text-gray-500 bg-gray-100 p-10 rounded-xl shadow-inner">
+                You haven't placed any bookings yet. Find a service now!
+            </p>}
+
+            {bookings.map(booking => (
+                <BookingCard 
+                    key={booking.id} 
+                    booking={booking} 
+                    isCustomer={true} 
+                    handleAction={() => {}}
+                    onReviewModalOpen={handleReviewModalOpen}
+                    onChatModalOpen={handleChatModalOpen}
+                    onPriceConfirmationOpen={handlePriceConfirmationOpen} 
+                />
+            ))}
+            
+            {activeModal === 'review' && selectedBooking && (
+                <ReviewAndPaymentModal 
+                    booking={selectedBooking} 
+                    onClose={() => setActiveModal(null)} 
+                    onCompleted={fetchBookings} 
+                />
+            )}
+            
+            {activeModal === 'chat' && selectedBooking && (
+                <ChatComponent
+                    booking={selectedBooking}
+                    onClose={() => setActiveModal(null)} 
+                    isCustomer={true}
+                />
+            )}
+            
+            {activeModal === 'confirmPrice' && selectedBooking && (
+                <PriceConfirmationModal
+                    booking={selectedBooking}
+                    onClose={() => setActiveModal(null)}
+                    onConfirmed={fetchBookings} 
+                />
+            )}
+        </div>
+    );
+};
+
+
+const CustomerDashboard = ({ setPage }) => {
+    const [activeTab, setActiveTab] = useState('bookings');
+    const navItems = [
+        { tab: 'bookings', label: 'My Bookings' },
+        { tab: 'wallet', label: 'My Wallet' }, 
+        { tab: 'findServices', label: 'Find a Service' }, 
+        { tab: 'profile', label: 'My Profile' },
+    ];
+    
+    const renderTab = () => {
+        switch (activeTab) {
+            case 'bookings': return <CustomerBookingHistory />;
+            case 'wallet': return <CustomerWallet />;
+            case 'profile': return <CustomerProfileManagement />;
+            case 'findServices': return <CustomerFindServices setPage={setPage} />;
+            default: return <CustomerBookingHistory />;
+        }
+    }
+    
+    return (
+        <DashboardLayout navItems={navItems} activeTab={activeTab} setActiveTab={setActiveTab} title="Customer Dashboard">
+            {renderTab()}
+        </DashboardLayout>
+    );
+};
+
+
 const ProviderWalletAndEarnings = () => {
     const { token } = useAuth();
     const [analytics, setAnalytics] = useState({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    
-    // Withdrawal Request State
     const [withdrawAmount, setWithdrawAmount] = useState('');
-    const [transactionReference, setTransactionReference] = useState(''); // UPI ID / Bank Details
+    const [withdrawPayoutDetails, setWithdrawPayoutDetails] = useState(''); // Holds UPI/Bank info
     const [withdrawLoading, setWithdrawLoading] = useState(false);
     const [withdrawError, setWithdrawError] = useState('');
     const [withdrawSuccess, setWithdrawSuccess] = useState('');
-    
+    const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
+
     const fetchAnalytics = useCallback(async () => {
         setLoading(true);
         setError('');
@@ -1172,6 +1710,13 @@ const ProviderWalletAndEarnings = () => {
             
             const data = await res.json();
             setAnalytics(data.analytics || {});
+            
+            // Fetch pending requests count separately for provider
+            const walletRes = await fetch(`${API_BASE_URL}/user/wallet`, { headers: { 'x-auth-token': token } });
+            if (walletRes.ok) {
+                const walletData = await walletRes.json();
+                setPendingRequestsCount(walletData.pending_requests_count || 0);
+            }
         } catch (err) {
             setError(err.message);
         } finally {
@@ -1189,38 +1734,41 @@ const ProviderWalletAndEarnings = () => {
         setWithdrawError(''); setWithdrawSuccess('');
         const amount = parseFloat(withdrawAmount);
 
-        if (isNaN(amount) || amount <= 100) {
-            setWithdrawError('Minimum withdrawal amount is ₹100.');
+        if (isNaN(amount) || amount <= 0) {
+            setWithdrawError('Please enter a valid amount.');
+            setWithdrawLoading(false);
+            return;
+        }
+        if (!withdrawPayoutDetails) {
+            setWithdrawError('Please enter your UPI ID or Bank Account details.');
             setWithdrawLoading(false);
             return;
         }
         if (amount > analytics.wallet_balance) {
-             setWithdrawError('Insufficient wallet balance.');
-            setWithdrawLoading(false);
-            return;
-        }
-        if (!transactionReference) {
-             setWithdrawError('Payout UPI ID or Bank Details are required.');
+            setWithdrawError('Withdrawal amount exceeds current wallet balance.');
             setWithdrawLoading(false);
             return;
         }
 
+
         try {
-            // FIX: Corrected API path
             const response = await fetch(`${API_BASE_URL}/provider/wallet/withdraw-request`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-                body: JSON.stringify({ amount, transaction_reference: transactionReference }),
+                body: JSON.stringify({ 
+                    amount,
+                    transaction_reference: withdrawPayoutDetails // Using txn_ref to hold UPI/Bank details
+                }),
             });
             const data = await response.json();
             
             if (response.ok) {
                 setWithdrawSuccess(data.message);
                 setWithdrawAmount('');
-                setTransactionReference(''); 
+                setWithdrawPayoutDetails('');
                 await fetchAnalytics(); 
             } else {
-                setWithdrawError(data.error || 'Withdrawal request failed.');
+                setWithdrawError(data.error || 'Withdrawal request failed. Check balance.');
             }
         } catch (err) {
             setWithdrawError('Network error during withdrawal request.');
@@ -1241,9 +1789,11 @@ const ProviderWalletAndEarnings = () => {
                 <div className="bg-[#E0F7FA] text-[#008080] p-6 rounded-xl shadow-lg border border-[#B2EBF2]">
                     <p className="text-sm font-medium">Wallet Balance</p>
                     <h3 className="text-3xl font-extrabold mt-1">{CURRENCY_SYMBOL}{analytics.wallet_balance?.toFixed(2) || '0.00'}</h3>
+                    {pendingRequestsCount > 0 && <p className="text-xs font-medium text-red-500">{pendingRequestsCount} Withdrawal Request(s) Pending Admin Approval</p>}
                 </div>
                 <div className="bg-green-100 text-green-800 p-6 rounded-xl shadow-lg border border-green-300">
                     <p className="text-sm font-medium">Total Lifetime Earnings</p>
+                    {/* FIX: This now correctly shows total money credited from payments/deposits */}
                     <h3 className="text-3xl font-extrabold mt-1">{CURRENCY_SYMBOL}{analytics.total_earnings?.toFixed(2) || '0.00'}</h3>
                 </div>
                 <div className="bg-blue-100 text-blue-800 p-6 rounded-xl shadow-lg border border-blue-300">
@@ -1257,35 +1807,41 @@ const ProviderWalletAndEarnings = () => {
             </div>
             
              <div className="bg-gray-50 p-6 rounded-xl border max-w-2xl">
-                <h3 className={`text-xl font-semibold ${DARK_CYAN_TEXT_CLASS} mb-4 border-b pb-2`}>Request Withdrawal (Admin-Verified)</h3>
+                <h3 className={`text-xl font-semibold ${DARK_CYAN_TEXT_CLASS} mb-4 border-b pb-2`}>Withdraw Funds Request (Admin Approval Required)</h3>
                 {withdrawError && <ErrorMessage message={withdrawError}/>}
                 {withdrawSuccess && <SuccessMessage message={withdrawSuccess}/>}
-                <p className="text-sm text-gray-600 mb-4">Transfer funds from your wallet to your linked UPI/Bank account. Minimum withdrawal is ₹100.</p>
-                <form onSubmit={handleWithdrawRequest} className="space-y-3">
-                    <input 
-                        type="number" 
-                        step="0.01" 
-                        value={withdrawAmount}
-                        onChange={(e) => setWithdrawAmount(e.target.value)}
-                        required
-                        placeholder={`${CURRENCY_SYMBOL} Amount to Withdraw (Max: ${CURRENCY_SYMBOL}${analytics.wallet_balance?.toFixed(2) || '0.00'})`}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                        disabled={withdrawLoading}
-                        max={analytics.wallet_balance}
-                    />
-                    <input 
-                        type="text" 
-                        value={transactionReference}
-                        onChange={(e) => setTransactionReference(e.target.value)}
-                        required
-                        placeholder="Your Payout UPI ID / Bank Details"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                        disabled={withdrawLoading}
-                    />
+                <p className="text-sm text-gray-600 mb-4">Transfer funds from your wallet to your linked UPI/bank account. This requires admin verification.</p>
+                <form onSubmit={handleWithdrawRequest} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700">Withdraw Amount ({CURRENCY_SYMBOL})</label>
+                        <input 
+                            type="number" 
+                            step="0.01" 
+                            value={withdrawAmount}
+                            onChange={(e) => setWithdrawAmount(e.target.value)}
+                            required
+                            placeholder={`${CURRENCY_SYMBOL} Amount`}
+                            className="block w-full px-4 py-2 border border-gray-300 rounded-lg"
+                            disabled={withdrawLoading}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700">UPI ID or Bank Details</label>
+                         <input 
+                            type="text" 
+                            value={withdrawPayoutDetails}
+                            onChange={(e) => setWithdrawPayoutDetails(e.target.value)}
+                            required
+                            placeholder="E.g., upi_id@bank or A/C:1234, IFSC: ABCD"
+                            className="block w-full px-4 py-2 border border-gray-300 rounded-lg"
+                            disabled={withdrawLoading}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Funds will be sent to these details upon approval.</p>
+                    </div>
+
                     <button type="submit" disabled={withdrawLoading} className="w-full bg-red-600 text-white font-bold px-6 py-3 rounded-lg hover:bg-red-700 transition disabled:bg-gray-400">
-                        {withdrawLoading ? 'Submitting Request...' : 'Submit Withdrawal Request'}
+                        {withdrawLoading ? 'Processing Request...' : 'Request Withdrawal'}
                     </button>
-                     <p className="text-xs text-red-500 pt-1">Requests are manually reviewed by Admin. Funds will be transferred within 24 hours of approval.</p>
                 </form>
             </div>
         </div>
@@ -1420,7 +1976,7 @@ const ProviderBookingRequests = () => {
             
             <h3 className="text-xl font-semibold text-slate-800 border-b pb-2 mt-10">Booking History ({historyBookings.length})</h3>
             {historyBookings.map(booking => (
-                <BookingCard key={booking.id} booking={booking} isCustomer={false} handleAction={() => {}} />
+                <BookingCard key={booking.id} booking={booking} isCustomer={false} handleAction={() => {}} onChatModalOpen={handleChatModalOpen}/>
             ))}
             
             {activeModal === 'chat' && selectedBooking && (
@@ -1448,11 +2004,12 @@ const ProviderProfileManagement = () => {
     const { user, token, fetchUserProfile } = useAuth();
     const [profile, setProfile] = useState(null);
     const [services, setServices] = useState([]);
+    const [profilePhotoFile, setProfilePhotoFile] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-    const [profilePhoto, setProfilePhoto] = useState(null); 
 
+    // FIX: useCallback ensures this function definition is stable, preventing re-render loop ("blinking")
     const fetchData = useCallback(async () => {
         if (!token || user?.role !== 'provider') {
              setLoading(false);
@@ -1477,92 +2034,32 @@ const ProviderProfileManagement = () => {
             const servicesData = await servicesRes.json();
             setServices(servicesData || []);
 
+            // Refresh main user profile to ensure photo URL is latest
+            await fetchUserProfile(token);
+
         } catch (err) {
             setError(err.message);
         } finally {
             setLoading(false);
         }
-    }, [token, user]);
+    }, [token, user, fetchUserProfile]); // Only run when these dependencies change
 
     useEffect(() => {
+        // FIX: The component now relies entirely on the stable fetchData function
         fetchData();
     }, [fetchData]);
-    
-    const handleFileChange = (e) => {
-        setProfilePhoto(e.target.files[0]);
-    };
 
-    const handleAccountUpdate = async (e) => {
-        e.preventDefault();
-        setError(''); setSuccess('');
-        
-        // This logic handles email update only, photo upload uses a separate button/route
-        const email = e.target.email.value;
-        setLoading(true);
-
-        const dataToSend = { email: email };
-        
-        try {
-            const response = await fetch(`${API_BASE_URL}/user/profile`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-                body: JSON.stringify(dataToSend),
-            });
-            
-            const data = await response.json();
-            
-            if (response.ok) {
-                setSuccess('Email updated successfully! Refreshing data...');
-                fetchUserProfile(token); 
-            } else {
-                setError(data.error || 'Failed to update email.');
-            }
-        } catch (err) {
-            setError('A network error occurred while submitting the email update.');
-        } finally {
-            setLoading(false);
+    const handlePhotoChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            setProfilePhotoFile(file);
         }
     };
-    
-    const handlePhotoSubmit = async (e) => {
-         e.preventDefault();
-         if (!profilePhoto) return;
-         setError(''); setSuccess(''); setLoading(true);
-
-         const formData = new FormData();
-         formData.append('profile_photo', profilePhoto); // NOTE: Backend expects 'profile_photo' field name
-         
-         try {
-            const response = await fetch(`${API_BASE_URL}/user/profile-photo`, {
-                method: 'POST', // Use POST for photo upload endpoint
-                headers: { 'x-auth-token': token },
-                body: formData,
-            });
-            const data = await response.json();
-            
-            if (response.ok) {
-                setSuccess('Profile photo uploaded successfully!');
-                setProfilePhoto(null); 
-                fetchUserProfile(token); 
-            } else {
-                setError(data.error || 'Failed to upload photo. Check file size/type.');
-            }
-         } catch (err) {
-             setError('A network error occurred during photo upload.');
-         } finally {
-             setLoading(false);
-         }
-    }
 
 
-    const handleProfileSubmit = async (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        setError(''); setSuccess('');
-        
-        // Use separate loading state for profile details to distinguish from photo/email loading
-        const profileLoading = true; 
-        setLoading(true); 
-
+        setError(''); setSuccess(''); setLoading(true);
         const formData = new FormData(e.target);
         
         const serviceIds = formData.get('primary_service_id') ? [formData.get('primary_service_id')] : [];
@@ -1576,15 +2073,16 @@ const ProviderProfileManagement = () => {
         const profileData = {
             display_name: formData.get('display_name'),
             bio: formData.get('bio'),
-            payout_upi_id: formData.get('payout_upi_id'),
             location_lat: parseFloat(formData.get('location_lat')),
             location_lon: parseFloat(formData.get('location_lon')),
             service_radius_km: parseInt(formData.get('service_radius_km'), 10),
             service_ids: serviceIds,
+            payout_upi_id: formData.get('payout_upi_id')
         };
         
         try {
-            const response = await fetch(`${API_BASE_URL}/provider/profile`, {
+            // 1. Update text profile details (including UPI)
+            let response = await fetch(`${API_BASE_URL}/provider/profile`, {
                 method: 'POST', 
                 headers: {
                     'Content-Type': 'application/json',
@@ -1593,80 +2091,78 @@ const ProviderProfileManagement = () => {
                 body: JSON.stringify(profileData),
             });
             
-            const data = await response.json();
+            let data = await response.json();
             
-            if (response.ok) {
-                setSuccess('Profile details updated successfully!');
-                fetchData(); // Refresh data
-            } else {
-                setError(data.error || 'Failed to update profile.');
+            if (!response.ok) {
+                 throw new Error(data.error || 'Failed to update basic profile.');
             }
+
+            // 2. Upload photo if file exists
+            if (profilePhotoFile) {
+                const photoFormData = new FormData();
+                photoFormData.append('profile_photo', profilePhotoFile);
+                
+                response = await fetch(`${API_BASE_URL}/user/profile-photo`, {
+                    method: 'POST',
+                    headers: { 'x-auth-token': token },
+                    body: photoFormData,
+                });
+                
+                data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to upload profile photo.');
+                }
+            }
+
+            setSuccess('Profile updated successfully!');
+            await fetchData(); // Refresh data
+            setProfilePhotoFile(null);
+            
         } catch (err) {
-            setError('A network error occurred while submitting the update.');
+            setError(err.message || 'A network error occurred while submitting the update.');
         } finally {
             setLoading(false);
         }
     };
     
-    if (loading && !profile) return <Spinner />;
+    if (loading) return <Spinner />;
     if (error && !profile) return <ErrorMessage message={error} />;
-    if (!profile) return <ErrorMessage message="Provider profile data is missing. Please complete initial setup." />;
+    if (!profile) return <ErrorMessage message="Provider profile data is missing. Please contact support or complete initial setup." />;
 
     const currentServiceId = profile.service_ids && profile.service_ids.length > 0 
         ? profile.service_ids[0] 
         : (services[0]?.id || '');
     
     return (
-        <div className="space-y-8">
-            <h2 className="text-2xl font-bold text-slate-700">Manage Your Public Profile & Payout Details</h2>
+        <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-slate-700">Manage Your Public Profile</h2>
             
             {error && <ErrorMessage message={error}/>}
             {success && <SuccessMessage message={success}/>}
             
-             {/* Account/Photo Update Form */}
-            <div className="bg-gray-50 p-6 rounded-xl border max-w-2xl">
-                 <h3 className={`text-xl font-semibold ${DARK_CYAN_TEXT_CLASS} mb-4 border-b pb-2`}>Account & Photo</h3>
-                 
-                 {/* Photo Upload Form */}
-                 <form onSubmit={handlePhotoSubmit} className="space-y-4">
-                     <div className="flex items-center space-x-4">
-                        <img 
-                            src={getPhotoUrl(user)} 
-                            alt="Current Profile" 
-                            className="w-20 h-20 rounded-full object-cover shadow-md border-2 border-white ring-2 ring-cyan-500" 
-                        />
-                        <label htmlFor="profile_photo_file" className="cursor-pointer bg-blue-100 text-blue-700 px-4 py-2 rounded-lg font-semibold hover:bg-blue-200 transition">
-                            {profilePhoto ? `Selected: ${profilePhoto.name.substring(0, 15)}...` : 'Change Photo (Max 5MB)'}
-                        </label>
+            <form onSubmit={handleSubmit} className="space-y-6 bg-gray-50 p-6 rounded-xl border">
+                
+                <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>Profile Picture</h3>
+                <div className="flex items-center space-x-6">
+                    <img 
+                        src={profilePhotoFile ? URL.createObjectURL(profilePhotoFile) : getPhotoUrl(user)} 
+                        alt="Current Profile" 
+                        className="w-24 h-24 rounded-full object-cover shadow-lg border-4 border-white ring-2 ring-cyan-500" 
+                    />
+                    <div>
                         <input 
-                            id="profile_photo_file" 
-                            name="profile_photo_file" 
+                            id="profile_photo"
                             type="file" 
-                            onChange={handleFileChange}
-                            className="hidden" 
                             accept="image/*"
+                            onChange={handlePhotoChange}
+                            className="text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-cyan-50 file:text-cyan-700 hover:file:bg-cyan-100"
+                            disabled={loading}
                         />
-                        <button type="submit" disabled={loading || !profilePhoto} className={`px-4 py-2 text-sm bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition disabled:bg-gray-400`}>
-                             {loading ? 'Uploading...' : 'Save Photo'}
-                         </button>
-                     </div>
-                 </form>
-
-                 {/* Email Update Form */}
-                 <form onSubmit={handleAccountUpdate} className="space-y-4 pt-4">
-                     <div>
-                        <label htmlFor="email" className="block text-sm font-semibold text-gray-700">Email Address (Login)</label>
-                        <input id="email" name="email" type="email" defaultValue={user?.email || ''} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
+                        {profilePhotoFile && <p className="text-sm text-green-600 mt-1">Ready to upload: {profilePhotoFile.name}</p>}
                     </div>
-                    <button type="submit" disabled={loading} className={`w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition shadow-md`}>
-                        Update Account Email
-                    </button>
-                 </form>
-            </div>
-            
-            {/* Profile Details Form */}
-            <form onSubmit={handleProfileSubmit} className="space-y-6 bg-gray-50 p-6 rounded-xl border">
-                 <h3 className={`text-xl font-semibold ${DARK_CYAN_TEXT_CLASS} mb-4 border-b pb-2`}>Public Profile Details</h3>
+                </div>
+
+                <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>Basic Details</h3>
                 <div>
                     <label htmlFor="display_name" className="block text-sm font-semibold text-gray-700">Display Name</label>
                     <input id="display_name" name="display_name" type="text" defaultValue={profile.display_name} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
@@ -1685,13 +2181,7 @@ const ProviderProfileManagement = () => {
                     <textarea id="bio" name="bio" rows="4" defaultValue={profile.bio} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" placeholder="Describe your services and experience (Max 250 chars)..."></textarea>
                 </div>
                 
-                <h3 className="text-lg font-bold text-slate-700 border-b pb-2">Payout Details (For Earnings)</h3>
-                <div>
-                    <label htmlFor="payout_upi_id" className="block text-sm font-semibold text-gray-700">Payout UPI ID</label>
-                    <input id="payout_upi_id" name="payout_upi_id" type="text" defaultValue={profile.payout_upi_id} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" placeholder="e.g., example@upi" />
-                </div>
-                
-                <h3 className="text-lg font-bold text-slate-700 border-b pb-2">Service Area</h3>
+                <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>Service Area</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                      <div>
                         <label htmlFor="location_lat" className="block text-sm font-semibold text-gray-700">Location Latitude (Home Base)</label>
@@ -1706,9 +2196,15 @@ const ProviderProfileManagement = () => {
                         <input id="service_radius_km" name="service_radius_km" type="number" defaultValue={profile.service_radius_km} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
                     </div>
                 </div>
+
+                <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>Payout Details</h3>
+                <div>
+                    <label htmlFor="payout_upi_id" className="block text-sm font-semibold text-gray-700">Primary Payout UPI ID / Bank Details</label>
+                    <input id="payout_upi_id" name="payout_upi_id" type="text" defaultValue={profile.payout_upi_id} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" placeholder="E.g., yourname@bank or A/C: 1234"/>
+                </div>
                 
-                <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition shadow-md">
-                    Save Profile Details
+                <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition shadow-md disabled:bg-gray-400">
+                    {loading ? 'Saving Profile...' : 'Save Profile Updates'}
                 </button>
             </form>
         </div>
@@ -1716,238 +2212,417 @@ const ProviderProfileManagement = () => {
 };
 
 
-// --- ADMIN DASHBOARD COMPONENTS (NEW & MODIFIED) ---
-
-const AdminTable = ({ title, headers, data, actionHandler, fetcher }) => {
-    // Helper to render the table structure
-    const getStatusClasses = (status) => {
-        switch (status) {
-            case 'pending': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-            case 'approved': return 'bg-green-100 text-green-800 border-green-300';
-            case 'rejected': return 'bg-red-100 text-red-800 border-red-300';
-            case 'closed': return 'bg-gray-200 text-gray-700 border-gray-400';
-            case 'Verified': return 'bg-green-100 text-green-800 border-green-300';
-            case 'Pending': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-            default: return 'bg-blue-100 text-blue-800 border-blue-300';
-        }
-    };
-
-    const isWalletRequestTable = title.includes('Requests');
-
-    return (
-        <div>
-            <h2 className="text-2xl font-semibold text-slate-800 mb-4">{title}</h2>
-            <button 
-                onClick={fetcher}
-                className={`mb-4 px-4 py-2 text-sm bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition`}
-            >
-                Refresh Data
-            </button>
-            <div className="overflow-x-auto border rounded-xl shadow-sm">
-                <table className="min-w-full bg-white">
-                    <thead className="bg-blue-50">
-                        <tr>
-                            {headers.map(header => <th key={header} className="py-3 px-6 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider border-b">{header}</th>)}
-                        </tr>
-                    </thead>
-                    <tbody className="text-gray-700 text-sm font-light divide-y divide-gray-200">
-                        {data.map((row, index) => (
-                            <tr key={index} className="hover:bg-gray-50">
-                                {row.map((cell, cellIndex) => {
-                                    const header = headers[cellIndex];
-                                    const cellText = String(cell);
-
-                                    if (header === 'Status' || header === 'Role' || header === 'Verification Status') {
-                                        return (
-                                             <td key={cellIndex} className="py-3 px-6 text-left whitespace-nowrap">
-                                                <span className={`text-xs font-semibold px-3 py-1 rounded-full border uppercase ${getStatusClasses(cellText)}`}>
-                                                    {cellText.replace('_', ' ')}
-                                                </span>
-                                            </td>
-                                        )
-                                    }
-                                    if (header === 'Actions' && actionHandler) {
-                                        const itemId = row[0];
-                                        const statusIndex = isWalletRequestTable ? 5 : 4; 
-                                        const status = String(row[statusIndex]).toLowerCase(); 
-                                        
-                                        if (title === "Provider Verification Queue") {
-                                            const isVerified = status === 'verified';
-                                            return (
-                                                <td key={cellIndex} className="py-3 px-6 text-left whitespace-nowrap space-x-2">
-                                                    <button 
-                                                        onClick={() => actionHandler(itemId, isVerified)} 
-                                                        className={`px-3 py-1 text-xs rounded-lg font-bold shadow-sm transition ${isVerified ? 'bg-yellow-500 text-white hover:bg-yellow-600' : 'bg-green-600 text-white hover:bg-green-700'} disabled:bg-gray-400`}
-                                                    >
-                                                        {isVerified ? 'Revoke' : 'Verify & Approve'}
-                                                    </button>
-                                                </td>
-                                            );
-                                        }
-
-                                        return (
-                                            <td key={cellIndex} className="py-3 px-6 text-left whitespace-nowrap space-x-2">
-                                                {status === 'pending' ? (
-                                                    <>
-                                                        <button onClick={() => actionHandler(itemId, 'approved')} className="px-3 py-1 text-xs rounded-lg font-bold shadow-sm transition bg-green-600 text-white hover:bg-green-700">Approve</button>
-                                                        <button onClick={() => actionHandler(itemId, 'rejected')} className="px-3 py-1 text-xs rounded-lg font-bold shadow-sm transition bg-red-500 text-white hover:bg-red-600">Reject</button>
-                                                    </>
-                                                ) : (
-                                                    <span className="text-gray-500 capitalize">{status}</span>
-                                                )}
-                                            </td>
-                                        );
-                                    }
-                                    // Handle Screenshot/URL display
-                                    if (header === 'Screenshot' && typeof cell === 'string' && cell.startsWith('http')) {
-                                         return (
-                                            <td key={cellIndex} className="py-3 px-6 text-left whitespace-nowrap">
-                                                <a href={cell} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-xs font-mono">View Proof</a>
-                                            </td>
-                                         );
-                                    }
-                                    return <td key={cellIndex} className="py-3 px-6 text-left whitespace-nowrap">{cell}</td>;
-                                })}
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-}
+// --- ADMIN COMPONENTS ---
 
 const AdminProfileManagement = () => {
     const { user, token, fetchUserProfile } = useAuth();
-    const [profileData, setProfileData] = useState({ email: user?.email || '' });
-    const [profilePhoto, setProfilePhoto] = useState(null); 
+    const [profileData, setProfileData] = useState({
+        email: user?.email || '',
+    });
+    
+    const [profilePhotoFile, setProfilePhotoFile] = useState(null);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [loading, setLoading] = useState(false);
-    
+
     useEffect(() => {
         if (user) {
-            setProfileData({ email: user.email || '' });
+            setProfileData({
+                email: user.email || '',
+            });
         }
     }, [user]);
-
-    const handleFileChange = (e) => {
-        setProfilePhoto(e.target.files[0]);
+    
+    const handleChange = (e) => {
+        setProfileData({ ...profileData, [e.target.name]: e.target.value });
     };
 
-    const handleEmailSubmit = async (e) => {
+    const handlePhotoChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            setProfilePhotoFile(file);
+        }
+    };
+    
+    const handleSubmit = async (e) => {
         e.preventDefault();
         setError(''); setSuccess(''); setLoading(true);
 
-        const dataToSend = { email: profileData.email };
+        const dataToSend = { ...profileData };
         
         try {
-            const response = await fetch(`${API_BASE_URL}/user/profile`, {
+            // 1. Update user email (only change for admin)
+            let response = await fetch(`${API_BASE_URL}/user/profile`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-auth-token': token,
+                },
                 body: JSON.stringify(dataToSend),
             });
             
-            const data = await response.json();
+            let data = await response.json();
             
-            if (response.ok) {
-                setSuccess('Admin email updated successfully! Refreshing data...');
-                await fetchUserProfile(token); 
-            } else {
-                setError(data.error || 'Failed to update profile. Email might be in use.');
+            if (!response.ok) {
+                 throw new Error(data.error || 'Failed to update email.');
             }
+
+            // 2. Upload photo if file exists
+            if (profilePhotoFile) {
+                const formData = new FormData();
+                formData.append('profile_photo', profilePhotoFile);
+                
+                response = await fetch(`${API_BASE_URL}/user/profile-photo`, {
+                    method: 'POST',
+                    headers: { 'x-auth-token': token },
+                    body: formData,
+                });
+                
+                data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to upload profile photo.');
+                }
+            }
+            
+            setSuccess('Admin Profile updated successfully! Refreshing data...');
+            await fetchUserProfile(token); 
+            setProfilePhotoFile(null);
+            
         } catch (err) {
-            setError('A network error occurred while submitting the email update.');
+            setError(err.message || 'A network error occurred while submitting the update.');
         } finally {
             setLoading(false);
         }
     };
     
-    const handlePhotoSubmit = async (e) => {
-         e.preventDefault();
-         if (!profilePhoto) return;
-         setError(''); setSuccess(''); setLoading(true);
-
-         const formData = new FormData();
-         formData.append('profile_photo', profilePhoto); // NOTE: Backend expects 'profile_photo' field name
-         
-         try {
-            const response = await fetch(`${API_BASE_URL}/user/profile-photo`, {
-                method: 'POST', // Use POST for photo upload endpoint
-                headers: { 'x-auth-token': token },
-                body: formData,
-            });
-            const data = await response.json();
-            
-            if (response.ok) {
-                setSuccess('Profile photo uploaded successfully!');
-                setProfilePhoto(null); 
-                await fetchUserProfile(token); 
-            } else {
-                setError(data.error || 'Failed to upload photo. Check file size/type.');
-            }
-         } catch (err) {
-             setError('A network error occurred during photo upload.');
-         } finally {
-             setLoading(false);
-         }
-    }
-    
     return (
         <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-slate-700">Admin Account & Photo</h2>
-            <p className="text-gray-600">Update your email and profile photo.</p>
+            <h2 className="text-2xl font-bold text-slate-700">Admin Account Settings</h2>
+            <p className="text-gray-600">Update your email and profile picture.</p>
             
             {error && <ErrorMessage message={error}/>}
             {success && <SuccessMessage message={success}/>}
             
-            <div className="space-y-4 bg-white p-6 rounded-xl border max-w-2xl">
-                 <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>Profile Photo</h3>
-                 <form onSubmit={handlePhotoSubmit} className="space-y-4">
-                     <div className="flex items-center space-x-4">
-                         <img 
-                            src={getPhotoUrl(user)} 
-                            alt="Current Profile" 
-                            className="w-20 h-20 rounded-full object-cover shadow-md border-2 border-white ring-2 ring-cyan-500" 
-                        />
-                        <label htmlFor="admin_profile_photo_file" className="cursor-pointer bg-blue-100 text-blue-700 px-4 py-2 rounded-lg font-semibold hover:bg-blue-200 transition">
-                            {profilePhoto ? `Selected: ${profilePhoto.name.substring(0, 15)}...` : 'Change Photo (Max 5MB)'}
-                        </label>
-                        <input 
-                            id="admin_profile_photo_file" 
-                            name="admin_profile_photo_file" 
-                            type="file" 
-                            onChange={handleFileChange}
-                            className="hidden" 
-                            accept="image/*"
-                            disabled={loading}
-                        />
-                         <button type="submit" disabled={loading || !profilePhoto} className={`px-4 py-2 text-sm bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition disabled:bg-gray-400`}>
-                             {loading ? 'Uploading...' : 'Save Photo'}
-                         </button>
-                     </div>
-                 </form>
-
-                <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>Account Details</h3>
-                <form onSubmit={handleEmailSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-6 bg-gray-50 p-6 rounded-xl border max-w-2xl">
+                
+                <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>Profile Picture</h3>
+                <div className="flex items-center space-x-6">
+                    <img 
+                        src={profilePhotoFile ? URL.createObjectURL(profilePhotoFile) : getPhotoUrl(user)} 
+                        alt="Current Profile" 
+                        className="w-24 h-24 rounded-full object-cover shadow-lg border-4 border-white ring-2 ring-cyan-500" 
+                    />
                     <div>
-                        <label htmlFor="email" className="block text-sm font-semibold text-gray-700">Email Address (Login)</label>
                         <input 
-                            id="email" 
-                            name="email" 
-                            type="email" 
-                            value={profileData.email}
-                            onChange={(e) => setProfileData({...profileData, email: e.target.value})}
-                            required 
-                            className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm" 
+                            id="profile_photo"
+                            type="file" 
+                            accept="image/*"
+                            onChange={handlePhotoChange}
+                            className="text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-cyan-50 file:text-cyan-700 hover:file:bg-cyan-100"
                             disabled={loading}
                         />
+                        {profilePhotoFile && <p className="text-sm text-green-600 mt-1">Ready to upload: {profilePhotoFile.name}</p>}
                     </div>
+                </div>
+
+                <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2 pt-4`}>Account Details</h3>
+                <div>
+                    <label htmlFor="email" className="block text-sm font-semibold text-gray-700">Email Address (Login)</label>
+                    <input 
+                        id="email" 
+                        name="email" 
+                        type="email" 
+                        value={profileData.email}
+                        onChange={handleChange}
+                        required 
+                        className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 transition" 
+                        disabled={loading}
+                    />
+                </div>
+                
+                <p className="text-sm text-gray-500">Your Role: <span className={`font-semibold text-red-600`}>{user?.role?.toUpperCase()}</span></p>
+                
+                <button type="submit" disabled={loading} className={`w-full ${DARK_CYAN_CLASS} text-white font-bold py-3 rounded-lg ${DARK_CYAN_HOVER_CLASS} transition shadow-md disabled:bg-gray-400`}>
+                    {loading ? 'Saving...' : 'Update Admin Profile'}
+                </button>
+            </form>
+        </div>
+    );
+};
+
+
+const AdminWalletRequests = () => {
+    const { token } = useAuth();
+    const [requests, setRequests] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [updateStatus, setUpdateStatus] = useState(null);
+
+    const fetchRequests = useCallback(async () => {
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch(`${API_BASE_URL}/admin/wallet-requests`, { 
+                headers: { 'x-auth-token': token },
+            });
+            
+            if (!res.ok) {
+                 const errorText = await res.json();
+                 throw new Error(errorText.error || `Failed to fetch requests. Status: ${res.status}`);
+            }
+            
+            const data = await res.json();
+            setRequests(data || []);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [token]);
+
+    useEffect(() => {
+        fetchRequests();
+    }, [fetchRequests]);
+
+    const handleAction = async (requestId, action) => {
+        setUpdateStatus({ id: requestId, loading: true });
+        setError('');
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/admin/wallet-requests/${requestId}/${action}`, {
+                method: 'PUT',
+                headers: { 'x-auth-token': token },
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.json();
+                throw new Error(errorText.error || `${action} action failed.`);
+            }
+            
+            await fetchRequests();
+            setUpdateStatus({ id: requestId, success: true, message: `Request ${requestId} ${action} successfully.` });
+            
+        } catch (err) {
+            setError(err.message || 'Network error during request update.');
+        } finally {
+            setUpdateStatus(null);
+        }
+    };
+    
+    const getStatusClasses = (status) => {
+        switch (status) {
+            case 'pending': return 'bg-yellow-100 text-yellow-800 border-yellow-300 animate-pulse';
+            case 'approved': return 'bg-green-100 text-green-800 border-green-300';
+            case 'rejected': return 'bg-red-100 text-red-800 border-red-300';
+            default: return 'bg-gray-100 text-gray-600 border-gray-300';
+        }
+    };
+
+
+    return (
+        <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-slate-700">Wallet Deposit/Withdrawal Requests</h2>
+            <p className="text-gray-600">Review and approve customer deposit proofs and provider withdrawal requests.</p>
+            
+            {error && <ErrorMessage message={error}/>}
+            {updateStatus && updateStatus.success && <SuccessMessage message={updateStatus.message} />}
+            {loading && <Spinner />}
+            
+            <div className="space-y-4">
+                {requests.length === 0 && !loading && <p className="text-center text-gray-500 bg-gray-100 p-10 rounded-xl shadow-inner">No active wallet requests at this time.</p>}
+                
+                {requests.map(req => {
+                    const isProcessing = updateStatus && updateStatus.id === req.id && updateStatus.loading;
+                    const isDeposit = req.type === 'deposit';
                     
-                    <button type="submit" disabled={loading} className={`w-full ${DARK_CYAN_CLASS} text-white font-bold py-3 rounded-lg ${DARK_CYAN_HOVER_CLASS} transition shadow-md disabled:bg-gray-400`}>
-                        {loading ? 'Saving...' : 'Update Email'}
-                    </button>
-                </form>
+                    return (
+                        <div key={req.id} className="bg-white border border-gray-200 rounded-xl shadow-lg p-6 flex flex-col md:flex-row justify-between items-start md:items-center">
+                            <div className="flex-grow space-y-2">
+                                <div className="flex items-center space-x-3">
+                                    <span className={`text-xs font-semibold px-3 py-1 rounded-full border uppercase ${getStatusClasses(req.status)}`}>
+                                        {req.status}
+                                    </span>
+                                    <span className="text-sm font-bold uppercase text-blue-600">{isDeposit ? 'Deposit' : 'Withdrawal'}</span>
+                                    <p className="text-sm text-gray-500">Request ID: <span className="font-mono">{req.id}</span></p>
+                                </div>
+                                
+                                <h3 className="text-xl font-bold text-slate-800">{CURRENCY_SYMBOL}{parseFloat(req.amount).toFixed(2)}</h3>
+                                
+                                <div className="text-gray-600 text-sm space-y-1">
+                                    <p>📧 **User:** {req.email} ({req.role})</p>
+                                    <p>📅 **Requested:** {new Date(req.requested_at).toLocaleString()}</p>
+                                    
+                                    {/* Deposit Specific Fields */}
+                                    {isDeposit && (
+                                        <>
+                                            <p>💳 **Txn Ref:** <span className="font-mono text-cyan-700">{req.transaction_reference}</span></p>
+                                            {req.screenshot_url && (
+                                                <a href={req.screenshot_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline flex items-center">
+                                                    View Payment Proof 🔗
+                                                </a>
+                                            )}
+                                        </>
+                                    )}
+                                    {/* Withdrawal Specific Fields */}
+                                    {!isDeposit && (
+                                        <p>🏦 **Payout Details:** <span className="font-semibold text-red-700">{req.transaction_reference}</span></p>
+                                    )}
+                                </div>
+                            </div>
+                            
+                            <div className="mt-4 md:mt-0 flex flex-col space-y-2 w-full md:w-auto">
+                                {req.status === 'pending' ? (
+                                    <>
+                                        <button 
+                                            onClick={() => handleAction(req.id, 'approve')} 
+                                            disabled={isProcessing}
+                                            className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 transition shadow-md disabled:bg-gray-400"
+                                        >
+                                            {isProcessing ? 'Processing...' : 'Approve & Update Wallet'}
+                                        </button>
+                                        <button 
+                                            onClick={() => handleAction(req.id, 'reject')} 
+                                            disabled={isProcessing}
+                                            className="bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600 transition shadow-md disabled:bg-gray-400"
+                                        >
+                                            Reject
+                                        </button>
+                                    </>
+                                ) : (
+                                    <p className={`font-bold text-sm text-center p-2 rounded-lg ${req.status === 'approved' ? 'text-green-600' : 'text-red-600'}`}>
+                                        {req.status.toUpperCase()}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
+const AdminContactMessages = () => {
+    const { token } = useAuth();
+    const [messages, setMessages] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+
+    const fetchMessages = useCallback(async () => {
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch(`${API_BASE_URL}/admin/contact-messages`, { 
+                headers: { 'x-auth-token': token },
+            });
+            
+            if (!res.ok) {
+                 const errorText = await res.json();
+                 throw new Error(errorText.error || `Failed to fetch messages. Status: ${res.status}`);
+            }
+            
+            const data = await res.json();
+            setMessages(data || []);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [token]);
+
+    useEffect(() => {
+        fetchMessages();
+    }, [fetchMessages]);
+
+    return (
+        <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-slate-700">Customer Contact Messages</h2>
+            <p className="text-gray-600">All submissions from the Contact Us form.</p>
+            
+            {error && <ErrorMessage message={error}/>}
+            {loading && <Spinner />}
+            
+            <div className="space-y-4">
+                {messages.length === 0 && !loading && <p className="text-center text-gray-500 bg-gray-100 p-10 rounded-xl shadow-inner">No contact messages.</p>}
+                
+                {messages.map(msg => (
+                    <div key={msg.id} className="bg-white border border-gray-200 rounded-xl shadow-lg p-6">
+                        <div className="flex justify-between items-start border-b pb-2 mb-2">
+                            <h3 className="text-lg font-semibold text-slate-800">{msg.sender_name}</h3>
+                            <span className="text-xs text-gray-500">{new Date(msg.created_at).toLocaleDateString()}</span>
+                        </div>
+                        <p className="text-sm font-medium text-blue-600 mb-2">Email: {msg.sender_email}</p>
+                        <p className="text-gray-700">{msg.message}</p>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+
+const AdminOverview = () => {
+    const { token } = useAuth();
+    const [metrics, setMetrics] = useState({});
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+
+    const fetchMetrics = useCallback(async () => {
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch(`${API_BASE_URL}/admin/overview-metrics`, { 
+                headers: { 'x-auth-token': token },
+            });
+            
+            if (!res.ok) {
+                 const errorText = await res.json();
+                 throw new Error(errorText.error || `Failed to fetch metrics. Status: ${res.status}`);
+            }
+            
+            const data = await res.json();
+            setMetrics(data || {});
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [token]);
+
+    useEffect(() => {
+        fetchMetrics();
+    }, [fetchMetrics]);
+
+    return (
+        <div className="space-y-6">
+            <h2 className="text-2xl font-semibold mb-4 text-slate-700">Key Platform Metrics</h2>
+            <p className="text-gray-600">Real-time counts for system health and pending actions.</p>
+            
+            {error && <ErrorMessage message={error} />}
+            {loading && <Spinner />}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 pt-4">
+                <div className="bg-blue-600 text-white p-6 rounded-xl shadow-lg">
+                    <p className="text-sm font-medium opacity-80">Total Users</p>
+                    <h3 className="text-3xl font-extrabold mt-1">{metrics.total_users || '0'}</h3>
+                </div>
+                <div className="bg-green-600 text-white p-6 rounded-xl shadow-lg">
+                    <p className="text-sm font-medium opacity-80">Total Bookings</p>
+                    <h3 className="text-3xl font-extrabold mt-1">{metrics.total_bookings || '0'}</h3>
+                </div>
+                <div className="bg-yellow-600 text-white p-6 rounded-xl shadow-lg">
+                    <p className="text-sm font-medium opacity-80">Pending Provider Verify</p>
+                    <h3 className="text-3xl font-extrabold mt-1">{metrics.pending_verification || '0'}</h3>
+                </div>
+                {/* FIX: New metrics for Wallet Requests */}
+                <div className="bg-red-600 text-white p-6 rounded-xl shadow-lg">
+                    <p className="text-sm font-medium opacity-80">Pending Deposits</p>
+                    <h3 className="text-3xl font-extrabold mt-1">{metrics.pending_deposits || '0'}</h3>
+                </div>
+                <div className="bg-red-600 text-white p-6 rounded-xl shadow-lg">
+                    <p className="text-sm font-medium opacity-80">Pending Withdrawals</p>
+                    <h3 className="text-3xl font-extrabold mt-1">{metrics.pending_withdrawals || '0'}</h3>
+                </div>
             </div>
         </div>
     );
@@ -1960,17 +2635,17 @@ const AdminDashboard = () => {
     const [users, setUsers] = useState([]);
     const [providers, setProviders] = useState([]);
     const [bookings, setBookings] = useState([]);
-    const [walletRequests, setWalletRequests] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
     const navItems = [
         { tab: 'overview', label: 'Overview' },
-        { tab: 'profile', label: 'My Profile' },
-        { tab: 'walletRequests', label: 'Wallet Requests' },
+        { tab: 'walletRequests', label: 'Wallet Requests' }, 
+        { tab: 'contactMessages', label: 'Contact Messages' }, // NEW TAB
+        { tab: 'users', label: 'Manage Users' },
         { tab: 'providers', label: 'Provider Verification' },
         { tab: 'bookings', label: 'All Bookings' },
-        { tab: 'users', label: 'Manage Users' },
+        { tab: 'profile', label: 'My Profile' },
     ];
 
     const fetchData = useCallback(async (endpoint, setter) => {
@@ -1993,60 +2668,98 @@ const AdminDashboard = () => {
         }
     }, [token]);
 
-    const handleProcessRequest = async (endpoint, requestId, status, fetcher) => {
-        setLoading(true);
-        const actionEndpoint = status === 'approved' ? 'approve' : 'reject';
 
+    const handleVerify = async (providerId, currentStatus) => {
+        setLoading(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/admin/${endpoint}/${requestId}/${actionEndpoint}`, {
+            const newStatus = !currentStatus;
+            const res = await fetch(`${API_BASE_URL}/admin/providers/${providerId}/verify`, {
                 method: 'PUT',
                 headers: { 
                     'Content-Type': 'application/json',
                     'x-auth-token': token,
                 },
-                body: JSON.stringify({ reason: `Request ${status} by Admin.` }), // Reason is used for rejection only
+                body: JSON.stringify({ is_verified: newStatus }),
             });
             
             if (!res.ok) {
                 const errorText = await res.json();
-                throw new Error(errorText.error || `Failed to ${status} request.`);
+                throw new Error(errorText.error || `Failed to ${newStatus ? 'verify' : 'un-verify'} provider.`);
             }
             
-            // Refresh the relevant list
-            await fetcher();
+            await fetchData('providers', setProviders);
         } catch (err) {
             setError(err.message);
         } finally {
             setLoading(false);
         }
     };
-    
-    // Combined Data Fetcher
-    const fetchAllData = useCallback(() => {
-        fetchData('users', setUsers);
-        fetchData('providers', setProviders);
-        fetchData('bookings', setBookings);
-        fetchData('wallet-requests', setWalletRequests);
-    }, [fetchData]);
 
     useEffect(() => {
+        // Initial data load for tables that don't change often
         if (token) {
-            fetchAllData();
+            fetchData('users', setUsers);
+            fetchData('providers', setProviders);
+            fetchData('bookings', setBookings);
         }
-    }, [token, fetchAllData]);
+    }, [token, fetchData]);
 
-
-    const handleVerify = (providerId, currentStatus) => handleProcessRequest('providers', providerId, !currentStatus ? 'approved' : 'rejected', () => fetchData('providers', setProviders));
-    const handleProcessWallet = (requestId, status) => handleProcessRequest('wallet-requests', requestId, status, () => fetchData('wallet-requests', setWalletRequests));
+    // Refetch data specifically for the active tab (except Overview which handles its own fetch)
+    useEffect(() => {
+        if (token) {
+            if (activeTab === 'users') fetchData('users', setUsers);
+            else if (activeTab === 'providers') fetchData('providers', setProviders);
+            else if (activeTab === 'bookings') fetchData('bookings', setBookings);
+        }
+    }, [activeTab, token, fetchData]);
+    
+    // Helper to render the table structure
+    const AdminTable = ({ title, headers, data, actionHandler }) => (
+        <div>
+            <h2 className="text-2xl font-semibold text-slate-800 mb-4">{title}</h2>
+            {loading && activeTab !== 'overview' && <Spinner />}
+            {error && <ErrorMessage message={error} />}
+            <div className="overflow-x-auto border rounded-xl shadow-sm">
+                <table className="min-w-full bg-white">
+                    <thead className="bg-blue-50">
+                        <tr>
+                            {headers.map(header => <th key={header} className="py-3 px-6 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider border-b">{header}</th>)}
+                        </tr>
+                    </thead>
+                    <tbody className="text-gray-700 text-sm font-light divide-y divide-gray-200">
+                        {data.map((row, index) => (
+                            <tr key={index} className="hover:bg-gray-50">
+                                {row.map((cell, cellIndex) => {
+                                    if (headers[cellIndex] === 'Actions' && actionHandler) {
+                                        const provider = providers.find(p => p.id === row[0]);
+                                        return (
+                                            <td key={cellIndex} className="py-3 px-6 text-left whitespace-nowrap">
+                                                <button 
+                                                    onClick={() => actionHandler(provider.id, provider.is_verified)} 
+                                                    disabled={loading}
+                                                    className={`px-3 py-1 text-xs rounded-lg font-bold shadow-sm transition ${provider.is_verified ? 'bg-yellow-500 text-white hover:bg-yellow-600' : 'bg-green-600 text-white hover:bg-green-700'} disabled:bg-gray-400`}
+                                                >
+                                                    {provider.is_verified ? 'Revoke' : 'Verify & Approve'}
+                                                </button>
+                                            </td>
+                                        );
+                                    }
+                                    return <td key={cellIndex} className="py-3 px-6 text-left whitespace-nowrap">{cell}</td>;
+                                })}
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
 
     const formatDate = (dateString) => new Date(dateString).toLocaleDateString();
-    const formatDateTime = (dateString) => new Date(dateString).toLocaleString();
-
 
     const userTableData = users.map(u => [
         u.id, 
         u.email, 
-        u.role,
+        <span key={u.id} className={`font-bold ${u.role === 'admin' ? 'text-red-500' : 'text-blue-500'}`}>{u.role.toUpperCase()}</span>,
         u.status,
         formatDate(u.created_at)
     ]);
@@ -2056,7 +2769,7 @@ const AdminDashboard = () => {
         p.display_name, 
         p.services_offered || 'N/A',
         p.review_count,
-        p.is_verified ? 'Verified' : 'Pending',
+        <span key={p.id} className={`font-bold ${p.is_verified ? 'text-green-600' : 'text-yellow-600'}`}>{p.is_verified ? 'Verified' : 'Pending'}</span>,
         p.id 
     ]);
 
@@ -2065,164 +2778,78 @@ const AdminDashboard = () => {
         b.provider_name,
         b.customer_email,
         formatDate(b.scheduled_at),
-        b.booking_status,
+        <span key={b.id} className={`font-bold uppercase text-xs px-2 py-1 rounded-full ${
+            b.booking_status === 'closed' ? 'bg-green-100 text-green-700' :
+            b.booking_status.includes('pending') || b.booking_status.includes('awaiting') ? 'bg-yellow-100 text-yellow-700' :
+            'bg-blue-100 text-blue-700'
+        }`}>{b.booking_status.replace('_', ' ')}</span>,
         formatDate(b.created_at)
     ]);
-    
-    const walletRequestTableData = walletRequests.map(r => [
-        r.id,
-        r.type === 'deposit' ? 'DEPOSIT' : 'WITHDRAWAL',
-        r.type === 'deposit' ? 'Customer' : 'Provider',
-        `${CURRENCY_SYMBOL}${parseFloat(r.amount).toFixed(2)}`,
-        r.type === 'deposit' ? r.transaction_reference : r.transaction_reference,
-        r.screenshot_url,
-        r.status,
-        formatDateTime(r.requested_at),
-        r.id
-    ]);
-
-
-    const renderTab = () => {
-        switch (activeTab) {
-            case 'overview': 
-                const pendingDeposits = walletRequests.filter(r => r.type === 'deposit' && r.status === 'pending').length;
-                const pendingWithdrawals = walletRequests.filter(r => r.type === 'withdrawal' && r.status === 'pending').length;
-                return (
-                    <div className="space-y-6">
-                        <h2 className="text-2xl font-semibold mb-4 text-slate-700">Key Platform Metrics</h2>
-                        <p className="text-gray-600">This data is fetched live from your backend APIs to provide an overview.</p>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 pt-4">
-                            <div className="bg-blue-600 text-white p-6 rounded-xl shadow-lg">
-                                <p className="text-sm font-medium opacity-80">Total Users</p>
-                                <h3 className="text-3xl font-extrabold mt-1">{users.length > 0 ? users.length : '0'}</h3>
-                            </div>
-                            <div className="bg-green-600 text-white p-6 rounded-xl shadow-lg">
-                                <p className="text-sm font-medium opacity-80">Total Bookings</p>
-                                <h3 className="text-3xl font-extrabold mt-1">{bookings.length > 0 ? bookings.length : '0'}</h3>
-                            </div>
-                            <div className="bg-yellow-600 text-white p-6 rounded-xl shadow-lg">
-                                <p className="text-sm font-medium opacity-80">Pending Deposits</p>
-                                <h3 className="text-3xl font-extrabold mt-1">{pendingDeposits}</h3>
-                            </div>
-                             <div className="bg-red-600 text-white p-6 rounded-xl shadow-lg">
-                                <p className="text-sm font-medium opacity-80">Pending Withdrawals</p>
-                                <h3 className="text-3xl font-extrabold mt-1">{pendingWithdrawals}</h3>
-                            </div>
-                        </div>
-                        {loading && <Spinner />}
-                        {error && <ErrorMessage message={error} />}
-                    </div>
-                );
-            case 'profile':
-                return <AdminProfileManagement />;
-            case 'walletRequests': 
-                return <AdminTable 
-                    title="All Wallet Requests" 
-                    headers={['ID', 'Type', 'Role', 'Amount', 'Ref/UPI ID', 'Screenshot', 'Status', 'Requested On', 'Actions']} 
-                    data={walletRequestTableData} 
-                    actionHandler={handleProcessWallet} 
-                    fetcher={() => fetchData('wallet-requests', setWalletRequests)}
-                />;
-            case 'providers': 
-                return <AdminTable 
-                    title="Provider Verification Queue" 
-                    headers={['ID', 'Name', 'Services', 'Reviews', 'Verification Status', 'Actions']} 
-                    data={providerTableData} 
-                    actionHandler={handleVerify} 
-                    fetcher={() => fetchData('providers', setProviders)}
-                />;
-            case 'bookings': 
-                return <AdminTable 
-                    title="All Platform Bookings" 
-                    headers={['ID', 'Provider', 'Customer Email', 'Scheduled', 'Status', 'Created On']} 
-                    data={bookingTableData} 
-                    fetcher={() => fetchData('bookings', setBookings)}
-                />;
-            case 'users': 
-                return <AdminTable 
-                    title="All Users" 
-                    headers={['ID', 'Email', 'Role', 'Status', 'Registered On']} 
-                    data={userTableData}
-                    fetcher={() => fetchData('users', setUsers)}
-                />;
-            default: return null;
-        }
-    }
 
 
     return (
         <DashboardLayout navItems={navItems} activeTab={activeTab} setActiveTab={setActiveTab} title="Platform Administration">
-            {renderTab()}
+            {activeTab === 'overview' && <AdminOverview />}
+            {activeTab === 'walletRequests' && <AdminWalletRequests />}
+            {activeTab === 'contactMessages' && <AdminContactMessages />} 
+            {activeTab === 'users' && <AdminTable title="All Users" headers={['ID', 'Email', 'Role', 'Status', 'Registered On']} data={userTableData} />}
+            {activeTab === 'providers' && <AdminTable 
+                title="Provider Verification Queue" 
+                headers={['ID', 'Name', 'Services', 'Reviews', 'Status', 'Actions']} 
+                data={providerTableData} 
+                actionHandler={handleVerify} 
+            />}
+            {activeTab === 'bookings' && <AdminTable title="All Platform Bookings" headers={['ID', 'Provider', 'Customer Email', 'Scheduled', 'Status', 'Created On']} data={bookingTableData} />}
+            {activeTab === 'profile' && <AdminProfileManagement />}
         </DashboardLayout>
     );
 };
 
 
-// --- MAIN APP COMPONENT (No logical changes needed here, only context wrapper) ---
+// --- GENERAL LAYOUT AND CORE APP ---
 
-const AppContent = () => {
-    const [page, setPage] = useState('home');
-    const [pageData, setPageData] = useState(null);
-    const [selectedService, setSelectedService] = useState(null);
-    const [selectedProvider, setSelectedProvider] = useState(null);
-    const [searchParams, setSearchParams] = useState(null); 
-    
-    const { loading: authLoading } = useAuth(); 
-
-    const navigate = (pageName, data = null) => {
-        setPageData(data);
-        setPage(pageName);
-        window.scrollTo(0, 0); 
-    };
-
-    const renderPage = () => {
-        if (authLoading) {
-            return (
-                <div className="flex justify-center items-center h-screen w-full bg-gray-50">
-                    <Spinner />
-                    <p className="ml-4 text-xl font-semibold text-slate-700">Loading Application...</p>
-                </div>
-            );
-        }
-
-        switch (page) {
-            case 'home': return <HomePage setPage={navigate} setSelectedService={setSelectedService} setSearchParams={setSearchParams} setSelectedProvider={setSelectedProvider} />;
-            case 'allServices': return <AllServicesPage setPage={navigate} setSelectedService={setSelectedService} searchParams={searchParams} />;
-            case 'serviceProviders': return <ServiceProvidersPage service={selectedService} setPage={navigate} setSelectedProvider={setSelectedProvider} />;
-            case 'providerDetail': return <ProviderDetailPage provider={selectedProvider} service={selectedService} setPage={navigate} />; 
-            case 'about': return <AboutPage />;
-            case 'contact': return <ContactPage />;
-            case 'login': return <LoginPage setPage={navigate} />;
-            case 'register': return <RegisterPage setPage={navigate} />;
-            case 'forgotPassword': return <ForgotPasswordPage setPage={navigate} />; 
-            case 'providerSetup': return <ProviderSetupPage setPage={navigate} pageData={pageData} />;
-            case 'customerDashboard': return <CustomerDashboard setPage={navigate} />; 
-            case 'providerDashboard': return <ProviderDashboard />;
-            case 'adminDashboard': return <AdminDashboard />;
-            default: return <HomePage setPage={navigate} setSelectedService={setSelectedService} setSearchParams={setSearchParams} setSelectedProvider={setSelectedProvider} />;
-        }
-    };
-    
+const DashboardLayout = ({ children, navItems, activeTab, setActiveTab, title }) => {
+    const { user } = useAuth();
     return (
-        <div className="flex flex-col min-h-screen font-sans bg-gray-50">
-            <Header setPage={navigate} />
-            <main className="flex-grow">
-                {renderPage()}
-            </main>
-            <Footer setPage={navigate} />
+        <div className="bg-gray-50 min-h-screen">
+            <div className="container mx-auto px-6 py-10">
+                <h1 className="text-3xl font-extrabold text-slate-800 mb-2">{title}</h1>
+                <p className="text-gray-500 mb-8">Logged in as: <span className="font-medium text-slate-700">{user?.email || 'N/A'} ({user?.role})</span></p>
+                <div className="flex flex-col md:flex-row gap-8">
+                    <aside className="md:w-1/4">
+                        <nav className="bg-white rounded-xl shadow-lg p-4 border border-gray-200 sticky top-24">
+                            <ul>
+                               {navItems.map(item => (
+                                    <li key={item.tab} className="mb-1">
+                                         <a
+                                             onClick={() => setActiveTab(item.tab)}
+                                             className={`block px-4 py-3 rounded-lg cursor-pointer transition-colors text-lg ${activeTab === item.tab ? `${DARK_CYAN_CLASS} text-white font-bold shadow-md` : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-700'}`}
+                                         >
+                                             {item.label}
+                                         </a>
+                                     </li>
+                                ))}
+                            </ul>
+                        </nav>
+                    </aside>
+                    <main className="md:w-3/4">
+                        <div className="bg-white rounded-xl shadow-lg p-6 min-h-[500px] border border-gray-200">
+                            {children}
+                        </div>
+                    </main>
+                </div>
+            </div>
         </div>
     );
 };
-
-// --- SUPPORTING PAGE COMPONENTS (FROM PREVIOUS RESPONSES) ---
-
-const HomePage = ({ setPage, setSelectedService, setSearchParams, setSelectedProvider }) => {
+const HomePage = ({ setPage, setSelectedService, setSearchParams,setSelectedProvider }) => {
   const [services, setServices] = useState([]);
   const [topProviders, setTopProviders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchLocation, setSearchLocation] = useState("");
+  const { user, isAuthenticated } = useAuth(); // Import useAuth to get user location
 
   useEffect(() => {
     const fetchData = async () => {
@@ -2234,12 +2861,24 @@ const HomePage = ({ setPage, setSelectedService, setSearchParams, setSelectedPro
         setServices(servicesData);
 
         // 2. Fetch Top Rated Providers
+        // Use user's current location if available, otherwise mock 0, 0
+        const defaultLat = isAuthenticated ? getProfileField(user, 'location_lat', 0) : 0;
+        const defaultLon = isAuthenticated ? getProfileField(user, 'location_lon', 0) : 0;
+        
         const providersRes = await fetch(
-          `${API_BASE_URL}/providers?service_id=${servicesData[0]?.id || 1}&lat=0&lon=0&sort_by=top_rated`
+          `${API_BASE_URL}/providers?lat=${defaultLat}&lon=${defaultLon}&sort_by=top_rated` // Removed specific service ID for broad top rating
         );
         if (!providersRes.ok) console.warn("Failed to fetch top providers.");
         const providersData = await providersRes.json();
-        setTopProviders(providersData.providers.slice(0, 5) || []);
+        setTopProviders(providersData.providers || []);
+        
+        // 3. Initialize search location if user has saved one
+        const userLat = getProfileField(user, 'location_lat', 0);
+        const userLon = getProfileField(user, 'location_lon', 0);
+        if (isAuthenticated && userLat !== 0 && userLon !== 0) {
+            setSearchLocation(`${userLat}, ${userLon}`);
+        }
+
       } catch (err) {
         setError(err.message);
       } finally {
@@ -2247,7 +2886,7 @@ const HomePage = ({ setPage, setSelectedService, setSearchParams, setSelectedPro
       }
     };
     fetchData();
-  }, []);
+  }, [isAuthenticated, user]);
 
   const handleServiceClick = (service) => {
     setSelectedService(service);
@@ -2265,9 +2904,8 @@ const HomePage = ({ setPage, setSelectedService, setSearchParams, setSelectedPro
   };
 
   const handleProviderClick = (provider) => {
-    // Assuming provider.service_name is populated by backend join, or fallback to first service
-    const service =
-      services.find((s) => provider.service_name === s.name) || services[0];
+    // Determine which service to show (using the one returned by the backend query for simplicity)
+    const service = services.find(s => s.id === provider.service_id) || services[0];
     setSelectedService(service);
     setSelectedProvider(provider);
     setPage("providerDetail");
@@ -2280,7 +2918,7 @@ const HomePage = ({ setPage, setSelectedService, setSearchParams, setSelectedPro
         {/* Full-width Background Image */}
         <div className="absolute inset-0 w-full h-[500px]">
           <img
-            src="/home_image.jpg"
+            src="https://placehold.co/1200x500/008080/ffffff?text=Service+Connect+Hero"
             alt="Trusted experts team graphic"
             className="w-full h-full object-cover object-center"
           />
@@ -2327,37 +2965,8 @@ const HomePage = ({ setPage, setSelectedService, setSearchParams, setSelectedPro
         </div>
       </section>
 
-      {/* TOP RATED PROVIDERS SECTION */}
-      <section className="py-16 -mt-32 relative z-20 bg-white">
-        <div className="container mx-auto px-6">
-          <h2 className="text-2xl font-extrabold text-slate-800 mb-8 border-b pb-2">
-            Top Rated Professionals
-          </h2>
-          {loading && <Spinner />}
-          {error && <ErrorMessage message={error} />}
-
-          <div className="flex overflow-x-auto space-x-6 pb-4">
-            {topProviders.length > 0 ? (
-              topProviders.map((provider) => (
-                <ProviderCard
-                  key={provider.id}
-                  provider={provider}
-                  onClick={() => handleProviderClick(provider)}
-                />
-              ))
-            ) : (
-              !loading && (
-                <p className="text-gray-500">
-                  No top-rated providers found yet. Be the first to review!
-                </p>
-              )
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* POPULAR SERVICES SECTION */}
-      <section className="py-16 relative z-20 bg-gray-50">
+      {/* FIX: POPULAR SERVICES SECTION (Moved to top of content) */}
+      <section className="py-16 -mt-32 relative z-20 bg-gray-50">
         <div className="container mx-auto px-6">
           <h2 className="text-2xl font-extrabold text-slate-800 mb-8 border-b pb-2">
             Popular Services
@@ -2385,9 +2994,42 @@ const HomePage = ({ setPage, setSelectedService, setSearchParams, setSelectedPro
               />
             ))}
           </div>
+        </div>
+      </section>
+      
+      {/* FIX: TOP RATED PROVIDERS SECTION (Moved after Popular Services) */}
+      <section className="py-16 relative z-20 bg-white">
+        <div className="container mx-auto px-6">
+          <h2 className="text-2xl font-extrabold text-slate-800 mb-8 border-b pb-2">
+            Top Rated Professionals
+          </h2>
+          {loading && <Spinner />}
+          {error && <ErrorMessage message={error} />}
 
-          {/* HOW IT WORKS SECTION */}
-          <h2 className="text-2xl font-extrabold text-slate-800 mb-8 mt-16 border-b pb-2">
+          <div className="flex overflow-x-auto space-x-6 pb-4">
+            {topProviders.length > 0 ? (
+              topProviders.map((provider) => (
+                <ProviderCard
+                  key={provider.id}
+                  provider={provider}
+                  onClick={() => handleProviderClick(provider)}
+                />
+              ))
+            ) : (
+              !loading && (
+                <p className="text-gray-500">
+                  No top-rated providers found yet. Be the first to review!
+                </p>
+              )
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* FIX: HOW IT WORKS SECTION (Moved to last) */}
+      <section className="py-16 relative z-20 bg-gray-50">
+         <div className="container mx-auto px-6">
+            <h2 className="text-2xl font-extrabold text-slate-800 mb-8 mt-4 border-b pb-2">
             How It Works
           </h2>
           <div className="grid md:grid-cols-3 gap-6">
@@ -2408,7 +3050,7 @@ const HomePage = ({ setPage, setSelectedService, setSearchParams, setSelectedPro
               stars="⭐⭐⭐⭐⭐"
             />
           </div>
-        </div>
+         </div>
       </section>
     </main>
   );
@@ -2450,7 +3092,8 @@ const AllServicesPage = ({ setPage, setSelectedService, searchParams }) => {
     
     return (
         <div className="container mx-auto px-6 py-16">
-            <button onClick={() => setPage('allServices')} className="text-blue-600 hover:text-blue-800 font-medium transition mb-8 flex items-center">&larr; Back to all services</button>
+            {/* FIX: Back link needs to use navigate function */}
+            <a onClick={() => setPage('home')} className="text-blue-600 hover:text-blue-800 font-medium transition mb-8 flex items-center cursor-pointer">&larr; Back to Home</a>
             <h1 className="text-4xl font-bold text-slate-800 mb-4 text-center border-b pb-4">All Available Services</h1>
              {searchParams?.query && (
                  <p className="text-center text-lg text-gray-600 mb-8">Showing results for: **"{searchParams.query}"**</p>
@@ -2513,7 +3156,8 @@ const ServiceProvidersPage = ({ service, setPage, setSelectedProvider }) => {
 
     return (
         <div className="container mx-auto px-6 py-16">
-            <button onClick={() => setPage('allServices')} className="text-blue-600 hover:text-blue-800 font-medium transition mb-8 flex items-center">&larr; Back to all services</button>
+            {/* FIX: Back link now navigates to 'allServices' */}
+            <a onClick={() => setPage('allServices')} className="text-blue-600 hover:text-blue-800 font-medium transition mb-8 flex items-center cursor-pointer">&larr; Back to Services</a>
             <h1 className="text-4xl font-extrabold text-slate-800 mb-2">{service?.name || "Service Providers"}</h1>
             <p className="text-lg text-gray-600 mb-4 max-w-3xl">{service?.description}</p>
             <p className="text-sm text-blue-500 font-medium mb-8">{locationMessage}</p>
@@ -2542,6 +3186,8 @@ const ProviderDetailPage = ({ provider, service, setPage }) => {
 
     if (!provider) return <ErrorMessage message="No provider selected." />;
     
+    // const portfolio = [ /* ... removed for brevity */ ];
+
     const handleRequestService = () => {
         if (!isAuthenticated || user?.role !== 'customer') {
             console.log("[UI Notification] Please log in as a customer to request a service.");
@@ -2565,9 +3211,8 @@ const ProviderDetailPage = ({ provider, service, setPage }) => {
                 {/* Header Section */}
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center border-b pb-6 mb-6">
                     <div className="flex items-center space-x-6">
-                        {/* Use actual profile photo URL */}
                         <img className="w-32 h-32 rounded-full object-cover shadow-xl border-4 border-white ring-2 ring-cyan-500" 
-                            src={provider.profile_picture_url || `https://placehold.co/150x150/E0F2F1/008080?text=${provider.display_name.charAt(0)}`} 
+                            src={provider.profile_picture_url || `https://placehold.co/150x150/E0E7FF/4338CA?text=${provider.display_name.charAt(0)}`} 
                             alt={provider.display_name} 
                         />
                         <div>
@@ -2620,6 +3265,7 @@ const ProviderDetailPage = ({ provider, service, setPage }) => {
         </div>
     );
 };
+// App.js - AboutPage Component (Enhancement)
 const AboutPage = () => {
     return (
         <div className="bg-white">
@@ -2627,17 +3273,128 @@ const AboutPage = () => {
                 <div className="text-center">
                     <h1 className="text-4xl md:text-5xl font-extrabold text-slate-900 mb-4">About Service Connect</h1>
                     <p className="text-xl text-gray-600 max-w-4xl mx-auto">
-                        Connecting communities with reliable local professionals. Our mission is to build trust in local services.
+                        Connecting communities with reliable local professionals. Our mission is to build trust in local services by ensuring quality, transparency, and accountability between customers and service providers.
                     </p>
+                </div>
+
+                <div className="mt-16 max-w-5xl mx-auto">
+                    <h2 className="text-3xl font-bold text-slate-800 mb-6 border-b pb-2">How Service Connect Works</h2>
+                    <div className="grid md:grid-cols-3 gap-8 text-left">
+                        <div className="space-y-3 p-4 border rounded-xl shadow-sm">
+                            <h3 className="text-xl font-semibold text-blue-600">1. Search & Book</h3>
+                            <p className="text-gray-700">Customers easily find trusted local professionals by searching service categories and filtering results based on location, service radius, and ratings.</p>
+                        </div>
+                        <div className="space-y-3 p-4 border rounded-xl shadow-sm">
+                            <h3 className="text-xl font-semibold text-blue-600">2. Quote & Acceptance</h3>
+                            <p className="text-gray-700">After a booking request, the provider sends a quoted price. The customer must explicitly accept this price before the service is officially accepted and scheduled.</p>
+                        </div>
+                        <div className="space-y-3 p-4 border rounded-xl shadow-sm">
+                            <h3 className="text-xl font-semibold text-blue-600">3. Pay & Review</h3>
+                            <p className="text-gray-700">Once the service is completed, the customer pays the quoted price securely via the in-app wallet and leaves a verified review, directly impacting the provider's rating.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     );
 };
+// App.js - ContactPage Component (Enhancement)
 const ContactPage = () => {
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    
+    // Mock details (based on .env context)
+    const SUPPORT_EMAIL = 'support@serviceconnect.com'; // Placeholder, assuming a support email
+    const PHONE_NUMBER = '+91 80 1234 5678'; // Placeholder
+    const ADDRESS = '101 Tech Park, Bangalore, India'; // Placeholder
+    
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        setSuccess('');
+        
+        const data = {
+            name: e.target.name.value,
+            email: e.target.email.value,
+            problem_description: e.target.problem_description.value,
+        };
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/contact-us`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok) {
+                setSuccess(result.message);
+                e.target.reset();
+            } else {
+                setError(result.error || 'Failed to submit message.');
+            }
+        } catch (err) {
+            setError('Network error occurred during submission.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+
     return (
          <div className="container mx-auto px-6 py-16">
-            <h1 className="text-4xl font-bold text-slate-800 mb-4 text-center">Get in Touch</h1>
+            <h1 className="text-4xl font-bold text-slate-800 mb-10 text-center border-b pb-4">Get in Touch</h1>
+            
+            <div className="grid md:grid-cols-3 gap-10">
+                
+                {/* Left/Main Section: Query Form */}
+                <div className="md:col-span-2 bg-white p-8 rounded-xl shadow-lg border">
+                    <h2 className="text-2xl font-semibold mb-4 text-slate-700">Send Us a Message</h2>
+                    <p className="text-gray-600 mb-6">If you have any queries, suggestions, or specific problems (customer or provider), please use the form below.</p>
+                    
+                    {error && <ErrorMessage message={error} />}
+                    {success && <SuccessMessage message={success} />}
+                    
+                    <form className="space-y-4" onSubmit={handleSubmit}>
+                        <div>
+                            <label htmlFor="name" className="block text-sm font-semibold text-gray-700">Your Name</label>
+                            <input type="text" id="name" name="name" required className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" />
+                        </div>
+                        <div>
+                            <label htmlFor="email" className="block text-sm font-semibold text-gray-700">Your Email Address (For Admin Reply)</label>
+                            <input type="email" id="email" name="email" required className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" />
+                        </div>
+                        {/* Description Box for Problems/Queries */}
+                        <div>
+                            <label htmlFor="problem_description" className="block text-sm font-semibold text-gray-700">
+                                Description of Query / Problem (e.g., Customer problem, Provider issue, Suggestion)
+                            </label>
+                            <textarea id="problem_description" name="problem_description" rows="5" required 
+                                className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" 
+                                placeholder="Describe the issue. If it's a customer/provider problem, specify the user's name/email/ID if known."
+                            ></textarea>
+                        </div>
+                        <button type="submit" disabled={loading} className={`w-full ${DARK_CYAN_CLASS} text-white font-bold py-3 rounded-lg ${DARK_CYAN_HOVER_CLASS} transition disabled:bg-gray-400`}>
+                            {loading ? 'Submitting...' : 'Submit to Admin'}
+                        </button>
+                    </form>
+                </div>
+                
+                {/* Right Section: Contact Info Sidebar */}
+                <div className="md:col-span-1 space-y-6">
+                    <div className="bg-white p-6 rounded-xl shadow-lg border">
+                        <h3 className="text-xl font-semibold mb-4 text-slate-700">Direct Contact</h3>
+                        <div className="space-y-3">
+                            <p className="flex items-center text-gray-700"><span className="text-xl mr-3 text-blue-600">📧</span> <strong>Email:</strong> <a href={`mailto:${SUPPORT_EMAIL}`} className="ml-2 text-blue-600 hover:underline">{SUPPORT_EMAIL}</a></p>
+                            <p className="flex items-center text-gray-700"><span className="text-xl mr-3 text-green-600">📞</span> <strong>Phone:</strong> <a href={`tel:${PHONE_NUMBER}`} className="ml-2 text-blue-600 hover:underline">{PHONE_NUMBER}</a></p>
+                            <p className="flex items-center text-gray-700"><span className="text-xl mr-3 text-red-600">📍</span> <strong>Address:</strong> <span className="ml-2">{ADDRESS}</span></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };
@@ -2953,18 +3710,12 @@ const ProviderSetupPage = ({ setPage, pageData }) => {
         const profileData = {
             display_name: e.target.display_name.value,
             bio: e.target.bio.value,
-            payout_upi_id: e.target.payout_upi_id.value, // New Required Field
             location_lat: parseFloat(e.target.lat.value), 
             location_lon: parseFloat(e.target.lon.value),
             service_radius_km: parseInt(e.target.radius.value, 10),
             service_ids: [pageData.primaryServiceId],
+            payout_upi_id: e.target.payout_upi_id.value
         };
-        
-        if (!profileData.payout_upi_id) {
-             setError('Payout UPI ID is required.');
-             setLoading(false);
-             return;
-        }
 
         try {
             const response = await fetch(`${API_BASE_URL}/provider/profile`, {
@@ -2998,13 +3749,10 @@ const ProviderSetupPage = ({ setPage, pageData }) => {
                     <input id="display_name" name="display_name" type="text" required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
                 </div>
                 <div>
-                    <label htmlFor="payout_upi_id" className="block text-sm font-semibold text-gray-700">Payout UPI ID (Required for Earnings)</label>
-                    <input id="payout_upi_id" name="payout_upi_id" type="text" required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" placeholder="e.g., example@upi" />
-                </div>
-                <div>
                     <label htmlFor="bio" className="block text-sm font-semibold text-gray-700">Short Bio / Expertise Summary</label>
                     <textarea id="bio" name="bio" rows="3" required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" placeholder="Describe your services and experience (Max 250 chars)..."></textarea>
                 </div>
+                <h3 className="text-lg font-bold text-slate-700 border-b pb-2">Service Location</h3>
                 <div className="grid grid-cols-3 gap-4">
                      <div>
                         <label htmlFor="lat" className="block text-sm font-semibold text-gray-700">Location Latitude</label>
@@ -3019,6 +3767,11 @@ const ProviderSetupPage = ({ setPage, pageData }) => {
                         <input id="radius" name="radius" type="number" defaultValue="10" required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
                     </div>
                 </div>
+                <h3 className="text-lg font-bold text-slate-700 border-b pb-2">Payout Details</h3>
+                <div>
+                    <label htmlFor="payout_upi_id" className="block text-sm font-semibold text-gray-700">Primary Payout UPI ID / Bank Details</label>
+                    <input id="payout_upi_id" name="payout_upi_id" type="text" required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" placeholder="E.g., yourname@bank or A/C: 1234"/>
+                </div>
                 {error && <ErrorMessage message={error}/>}
                 {success && <SuccessMessage message={success}/>}
                 <button type="submit" disabled={loading} className="w-full flex justify-center py-3 px-4 rounded-lg font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md disabled:bg-gray-400">
@@ -3028,554 +3781,61 @@ const ProviderSetupPage = ({ setPage, pageData }) => {
         </AuthFormContainer>
     );
 };
-const DashboardLayout = ({ children, navItems, activeTab, setActiveTab, title }) => {
-    const { user } = useAuth();
-    return (
-        <div className="bg-gray-50 min-h-screen">
-            <div className="container mx-auto px-6 py-10">
-                <h1 className="text-3xl font-extrabold text-slate-800 mb-2">{title}</h1>
-                <p className="text-gray-500 mb-8">Logged in as: <span className="font-medium text-slate-700">{user?.email || 'N/A'} ({user?.role})</span></p>
-                <div className="flex flex-col md:flex-row gap-8">
-                    <aside className="md:w-1/4">
-                        <nav className="bg-white rounded-xl shadow-lg p-4 border border-gray-200 sticky top-24">
-                            <ul>
-                               {navItems.map(item => (
-                                    <li key={item.tab} className="mb-1">
-                                         <a
-                                             onClick={() => setActiveTab(item.tab)}
-                                             className={`block px-4 py-3 rounded-lg cursor-pointer transition-colors text-lg ${activeTab === item.tab ? `${DARK_CYAN_CLASS} text-white font-bold shadow-md` : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-700'}`}
-                                         >
-                                             {item.label}
-                                         </a>
-                                     </li>
-                                ))}
-                            </ul>
-                        </nav>
-                    </aside>
-                    <main className="md:w-3/4">
-                        <div className="bg-white rounded-xl shadow-lg p-6 min-h-[500px] border border-gray-200">
-                            {children}
-                        </div>
-                    </main>
+
+const AppContent = () => {
+    const [page, setPage] = useState('home');
+    const [pageData, setPageData] = useState(null);
+    const [selectedService, setSelectedService] = useState(null);
+    const [selectedProvider, setSelectedProvider] = useState(null);
+    const [searchParams, setSearchParams] = useState(null); 
+    
+    // Now safe to call inside the Provider context
+    const { loading: authLoading } = useAuth(); 
+
+    const navigate = (pageName, data = null) => {
+        setPageData(data);
+        setPage(pageName);
+        window.scrollTo(0, 0); 
+    };
+
+    const renderPage = () => {
+        if (authLoading) {
+            return (
+                <div className="flex justify-center items-center h-screen w-full bg-gray-50">
+                    <Spinner />
+                    <p className="ml-4 text-xl font-semibold text-slate-700">Loading Application...</p>
                 </div>
-            </div>
+            );
+        }
+
+        switch (page) {
+            case 'home': return <HomePage setPage={navigate} setSelectedService={setSelectedService} setSearchParams={setSearchParams} />;
+            case 'allServices': return <AllServicesPage setPage={navigate} setSelectedService={setSelectedService} searchParams={searchParams} />;
+            case 'serviceProviders': return <ServiceProvidersPage service={selectedService} setPage={navigate} setSelectedProvider={setSelectedProvider} />;
+            case 'providerDetail': return <ProviderDetailPage provider={selectedProvider} service={selectedService} setPage={navigate} />; 
+            case 'about': return <AboutPage />;
+            case 'contact': return <ContactPage />;
+            case 'login': return <LoginPage setPage={navigate} />;
+            case 'register': return <RegisterPage setPage={navigate} />;
+            case 'forgotPassword': return <ForgotPasswordPage setPage={navigate} />; 
+            case 'providerSetup': return <ProviderSetupPage setPage={navigate} pageData={pageData} />;
+            case 'customerDashboard': return <CustomerDashboard setPage={navigate} />; 
+            case 'providerDashboard': return <ProviderDashboard />;
+            case 'adminDashboard': return <AdminDashboard />;
+            default: return <HomePage setPage={navigate} setSelectedService={setSelectedService} setSearchParams={setSearchParams} />;
+        }
+    };
+    
+    return (
+        <div className="flex flex-col min-h-screen font-sans bg-gray-50">
+            <Header setPage={navigate} />
+            <main className="flex-grow">
+                {renderPage()}
+            </main>
+            <Footer setPage={navigate} />
         </div>
     );
 };
-
-const CustomerFindServices = ({ setPage }) => (
-    <div className="space-y-6">
-        <h2 className="text-2xl font-bold text-slate-700">Find New Services</h2>
-        <p className="text-gray-600">Need help with a home repair, maintenance, or consultation? Find trusted local professionals here.</p>
-        
-        <div className="bg-blue-50 p-6 rounded-xl border border-blue-200 flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
-            <p className="text-lg font-semibold text-blue-800">Explore all categories now!</p>
-            <button 
-                onClick={() => setPage('allServices')}
-                className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 transition shadow-md w-full sm:w-auto"
-            >
-                Browse Services
-            </button>
-        </div>
-    </div>
-);
-
-
-const CustomerBookingHistory = () => {
-    const { token, user } = useAuth();
-    const [bookings, setBookings] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [activeModal, setActiveModal] = useState(null);
-    const [selectedBooking, setSelectedBooking] = useState(null);
-    
-    const fetchBookings = useCallback(async () => {
-        if (!token || user?.role !== 'customer') return;
-        setLoading(true);
-        setError('');
-        try {
-            const res = await fetch(`${API_BASE_URL}/customer/bookings`, { 
-                headers: { 'x-auth-token': token },
-            });
-            
-            if (!res.ok) {
-                 const errorText = await res.json();
-                 throw new Error(errorText.error || `Failed to fetch bookings. Status: ${res.status}`);
-            }
-            
-            const data = await res.json();
-            setBookings(data.bookings || []);
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    }, [token, user]);
-
-    useEffect(() => {
-        fetchBookings();
-    }, [fetchBookings]);
-    
-    const handleReviewModalOpen = (booking) => {
-        setSelectedBooking(booking);
-        setActiveModal('review');
-    };
-    
-    const handleChatModalOpen = (booking) => {
-        setSelectedBooking(booking);
-        setActiveModal('chat');
-    };
-    
-    const handlePriceConfirmationOpen = (booking) => {
-        setSelectedBooking(booking);
-        setActiveModal('confirmPrice');
-    };
-
-
-    return (
-        <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-slate-700">Your Booking History</h2>
-            <p className="text-gray-600">Track the status of your requested services and access chat and payment options.</p>
-            
-            {error && <ErrorMessage message={error}/>}
-            {loading && <Spinner />}
-            
-            {!loading && bookings.length === 0 && <p className="text-center text-gray-500 bg-gray-100 p-10 rounded-xl shadow-inner">
-                You haven't placed any bookings yet. Find a service now!
-            </p>}
-
-            {bookings.map(booking => (
-                <BookingCard 
-                    key={booking.id} 
-                    booking={booking} 
-                    isCustomer={true} 
-                    handleAction={() => {}}
-                    onReviewModalOpen={handleReviewModalOpen}
-                    onChatModalOpen={handleChatModalOpen}
-                    onPriceConfirmationOpen={handlePriceConfirmationOpen} 
-                />
-            ))}
-            
-            {activeModal === 'review' && selectedBooking && (
-                <ReviewAndPaymentModal 
-                    booking={selectedBooking} 
-                    onClose={() => setActiveModal(null)} 
-                    onCompleted={fetchBookings} 
-                />
-            )}
-            
-            {activeModal === 'chat' && selectedBooking && (
-                <ChatComponent
-                    booking={selectedBooking}
-                    onClose={() => setActiveModal(null)} 
-                    isCustomer={true}
-                />
-            )}
-            
-            {activeModal === 'confirmPrice' && selectedBooking && (
-                <PriceConfirmationModal
-                    booking={selectedBooking}
-                    onClose={() => setActiveModal(null)}
-                    onConfirmed={fetchBookings} 
-                />
-            )}
-        </div>
-    );
-};
-const CustomerDashboard = ({ setPage }) => {
-    const [activeTab, setActiveTab] = useState('bookings');
-    const navItems = [
-        { tab: 'bookings', label: 'My Bookings' },
-        { tab: 'wallet', label: 'My Wallet' }, 
-        { tab: 'findServices', label: 'Find a Service' }, 
-        { tab: 'profile', label: 'My Profile' },
-    ];
-    
-    const renderTab = () => {
-        switch (activeTab) {
-            case 'bookings': return <CustomerBookingHistory />;
-            case 'wallet': return <CustomerWallet />;
-            case 'profile': return <CustomerProfileManagement />;
-            case 'findServices': return <CustomerFindServices setPage={setPage} />;
-            default: return <CustomerBookingHistory />;
-        }
-    }
-    
-    return (
-        <DashboardLayout navItems={navItems} activeTab={activeTab} setActiveTab={setActiveTab} title="Customer Dashboard">
-            {renderTab()}
-        </DashboardLayout>
-    );
-};
-const SetPriceModal = ({ booking, onClose, onPriceSet }) => {
-    const { token } = useAuth();
-    const [amount, setAmount] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
-    
-    const handleSetPrice = async (e) => {
-        e.preventDefault();
-        setLoading(true);
-        setError('');
-
-        const finalAmount = parseFloat(amount);
-        if (isNaN(finalAmount) || finalAmount <= 0) {
-            setError('Please enter a valid positive amount.');
-            setLoading(false);
-            return;
-        }
-
-        try {
-            // New logic: send 'accepted' status AND the amount. Backend sets status to 'awaiting_customer_confirmation'
-            const response = await fetch(`${API_BASE_URL}/bookings/${booking.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-                body: JSON.stringify({ status: 'accepted', amount: finalAmount }),
-            });
-            const data = await response.json();
-
-            if (response.ok) {
-                setSuccess(`Price of ${CURRENCY_SYMBOL}${finalAmount.toFixed(2)} set. Customer notified for confirmation.`);
-                setTimeout(() => onPriceSet(), 2000);
-            } else {
-                setError(data.error || 'Failed to set price.');
-            }
-        } catch (err) {
-            setError('Network error occurred.');
-        } finally {
-            setLoading(false);
-        }
-    };
-    
-    return (
-        <Modal title={`Set Price for Booking #${booking.id}`} onClose={onClose}>
-            <p className="text-gray-600 mb-4">Set the final service price. The customer must confirm this price before the booking status moves to 'Accepted'.</p>
-            {error && <ErrorMessage message={error} />}
-            {success && <SuccessMessage message={success} />}
-            <form onSubmit={handleSetPrice} className="space-y-4">
-                 <div>
-                    <label htmlFor="amount" className="block text-sm font-semibold text-gray-700">Final Price ({CURRENCY_SYMBOL})</label>
-                    <input 
-                        id="amount" 
-                        name="amount" 
-                        type="number" 
-                        step="0.01"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        required 
-                        className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg text-lg" 
-                        placeholder="e.g., 5000.00"
-                    />
-                </div>
-                <button type="submit" disabled={loading} className={`w-full ${DARK_CYAN_CLASS} text-white font-bold py-3 rounded-lg ${DARK_CYAN_HOVER_CLASS} transition disabled:bg-gray-400`}>
-                    {loading ? 'Submitting Price...' : 'Submit Price & Await Confirmation'}
-                </button>
-            </form>
-        </Modal>
-    );
-};
-
-
-const BookingModal = ({ provider, service, onClose, onBooked, navigate }) => { 
-    const { token, user } = useAuth();
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
-
-    const handleBookingSuccess = () => {
-        onClose();
-        navigate('customerDashboard');
-    };
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setLoading(true);
-        setError('');
-        
-        const bookingData = {
-            provider_id: provider.id,
-            service_id: service.id,
-            scheduled_at: e.target.scheduled_at.value,
-            address: e.target.address.value,
-            customer_notes: e.target.customer_notes.value,
-            service_description: e.target.service_description.value, 
-        };
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/bookings`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-                body: JSON.stringify(bookingData),
-            });
-            const data = await response.json();
-
-            if (response.ok) {
-                setSuccess(`Request sent! ID: ${data.booking_id}. Provider will review shortly.`);
-                setTimeout(() => handleBookingSuccess(), 2000); 
-            } else {
-                setError(data.error || 'Failed to send booking request.');
-            }
-        } catch (err) {
-            setError('Network error occurred during booking.');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    if (!user) return <ErrorMessage message="You must be logged in to book a service." />;
-
-    // Use default location from user profile
-    const defaultLat = getProfileField(user, 'location_lat', 'N/A');
-    const defaultLon = getProfileField(user, 'location_lon', 'N/A');
-    const defaultAddress = getProfileField(user, 'address_line_1', '');
-    const defaultCity = getProfileField(user, 'city', '');
-    const fullAddress = defaultAddress + (defaultCity ? `, ${defaultCity}` : '');
-
-    return (
-        <Modal title={`Book ${service.name} with ${provider.display_name}`} onClose={onClose}>
-            {error && <ErrorMessage message={error} />}
-            {success && <SuccessMessage message={success} />}
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <p className="text-sm text-gray-600">**Important:** Your default location is set to ({defaultLat}, {defaultLon}). Update it in your dashboard if needed.</p>
-                <div>
-                    <label htmlFor="scheduled_at" className="block text-sm font-semibold text-gray-700">Scheduled Date & Time</label>
-                    <input id="scheduled_at" name="scheduled_at" type="datetime-local" required className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" />
-                </div>
-                <div>
-                    <label htmlFor="address" className="block text-sm font-semibold text-gray-700">Service Address</label>
-                    <input id="address" name="address" type="text" defaultValue={fullAddress} required className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" />
-                </div>
-                 <div>
-                    <label htmlFor="service_description" className="block text-sm font-semibold text-gray-700">Detailed Service Description (What do you need done?)</label>
-                    <textarea id="service_description" name="service_description" rows="3" required className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="e.g., Leaking faucet in the kitchen sink. Requires immediate attention."></textarea>
-                </div>
-                <div>
-                    <label htmlFor="customer_notes" className="block text-sm font-semibold text-gray-700">Additional Notes (Optional)</label>
-                    <textarea id="customer_notes" name="customer_notes" rows="2" className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
-                </div>
-                <button type="submit" disabled={loading} className={`w-full ${DARK_CYAN_CLASS} text-white font-bold py-3 rounded-lg ${DARK_CYAN_HOVER_CLASS} transition disabled:bg-gray-400`}>
-                    {loading ? 'Sending Request...' : 'Confirm & Send Request'}
-                </button>
-            </form>
-        </Modal>
-    );
-};
-
-const ReviewAndPaymentModal = ({ booking, onClose, onCompleted }) => {
-    const { token, user } = useAuth();
-    const [rating, setRating] = useState(0); 
-    const [comment, setComment] = useState('');
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [isPaid, setIsPaid] = useState(booking.booking_status === 'closed');
-    const [isReviewed, setIsReviewed] = useState(false); 
-    
-    useEffect(() => {
-        setIsPaid(booking.booking_status === 'closed');
-    }, [booking.booking_status]);
-
-    const handlePayment = async (e) => {
-        e.preventDefault();
-        setLoading(true);
-        setError('');
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/payments`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-                body: JSON.stringify({ booking_id: booking.id }), 
-            });
-            const data = await response.json();
-
-            if (response.ok) {
-                setSuccess(`Payment successful! Amount debited from your wallet. You can now optionally leave a review.`);
-                setIsPaid(true);
-                onCompleted(); 
-            } else {
-                setError(data.error || 'Payment failed. Check your wallet balance.');
-            }
-        } catch (err) {
-            setError('Network error during payment processing.');
-        } finally {
-            setLoading(false);
-        }
-    };
-    
-    const handleReviewSubmit = async (e) => {
-        e.preventDefault();
-        setLoading(true);
-        setError('');
-        setSuccess('');
-
-        if (!isPaid) {
-            setError('Please complete the payment first before submitting a review.');
-            setLoading(false);
-            return;
-        }
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/reviews`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-                body: JSON.stringify({ 
-                    booking_id: booking.id, 
-                    rating: rating, 
-                    comment: comment 
-                }),
-            });
-            const data = await response.json();
-            
-            if (response.ok) {
-                setSuccess(data.message);
-                setIsReviewed(true);
-                onCompleted(); 
-            } else {
-                setError(data.error || 'Review submission failed. This booking may already be reviewed.');
-            }
-        } catch (err) {
-            setError('Network error during review submission.');
-        } finally {
-            setLoading(false);
-        }
-    };
-    
-    // Star rating component for re-use
-    const StarRating = () => (
-        <div className="flex justify-center space-x-1">
-            {[1, 2, 3, 4, 5].map((star) => (
-                <span 
-                    key={star} 
-                    onClick={() => setRating(star)}
-                    className={`cursor-pointer text-3xl transition ${star <= rating ? 'text-amber-400' : 'text-gray-300 hover:text-amber-300'}`}
-                >
-                    &#9733;
-                </span>
-            ))}
-        </div>
-    );
-    
-    const isPaymentPending = booking.booking_status === 'completed' && !isPaid;
-    const isReadyToReview = isPaid && !isReviewed;
-
-    return (
-        <Modal title={`Payment & Review for Booking #${booking.id}`} onClose={onClose}>
-            {error && <ErrorMessage message={error} />}
-            {success && <SuccessMessage message={success} />}
-
-            {/* --- Payment Section (Only visible if not yet paid) --- */}
-            {isPaymentPending && (
-                <div className="bg-red-50 p-4 rounded-lg mb-4 border border-red-200">
-                    <h3 className="text-xl font-bold text-red-700 mb-3">1. Complete Payment (Required)</h3>
-                    <p className="mb-3 text-gray-700">
-                        Final Service Fee: **{CURRENCY_SYMBOL}{parseFloat(booking.amount || 0).toFixed(2)}**
-                    </p>
-                    <button onClick={handlePayment} disabled={loading} className="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition disabled:bg-gray-400">
-                        {loading ? 'Processing...' : `Pay ${CURRENCY_SYMBOL}${parseFloat(booking.amount || 0).toFixed(2)} from Wallet`}
-                    </button>
-                </div>
-            )}
-            
-            {/* --- Review Section (Only visible after successful payment or if already paid) --- */}
-            {isReadyToReview && (
-                <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
-                    <h3 className="text-xl font-bold text-amber-700 mb-3">2. Optional Review</h3>
-                    <form onSubmit={handleReviewSubmit} className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2 text-center">Your Rating</label>
-                            <StarRating />
-                            <p className="text-center text-sm text-gray-500 mt-1">({rating} out of 5)</p>
-                        </div>
-                        <div>
-                            <label htmlFor="comment" className="block text-sm font-semibold text-gray-700">Comment (Optional)</label>
-                            <textarea id="comment" name="comment" rows="3" value={comment} onChange={(e) => setComment(e.target.value)} className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="Share your experience..."></textarea>
-                        </div>
-                        <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400">
-                            {loading ? 'Submitting...' : 'Submit Review (Optional)'}
-                        </button>
-                    </form>
-                </div>
-            )}
-            
-            {booking.booking_status === 'closed' && isReviewed && (
-                <SuccessMessage message="Review already submitted for this booking." />
-            )}
-            
-            <div className="mt-4 text-right">
-                <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700 font-medium">Close</button>
-            </div>
-
-        </Modal>
-    );
-};
-
-const PriceConfirmationModal = ({ booking, onClose, onConfirmed }) => {
-    const { token } = useAuth();
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
-
-    const handleConfirm = async (accepted) => {
-        setLoading(true);
-        setError('');
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/bookings/${booking.id}/confirm-price`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-                body: JSON.stringify({ accepted }),
-            });
-            const data = await response.json();
-
-            if (response.ok) {
-                setSuccess(data.message);
-                setTimeout(() => onConfirmed(), 2000); 
-            } else {
-                setError(data.error || 'Failed to process confirmation.');
-            }
-        } catch (err) {
-            setError('Network error occurred.');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    return (
-        <Modal title={`Confirm Price for Booking #${booking.id}`} onClose={onClose}>
-            {error && <ErrorMessage message={error} />}
-            {success && <SuccessMessage message={success} />}
-            
-            <div className="space-y-4">
-                <p className="text-lg text-slate-800 font-semibold">
-                    Provider's Quoted Price: 
-                    <span className="text-green-600 ml-2 text-2xl font-bold">{CURRENCY_SYMBOL}{parseFloat(booking.amount || 0).toFixed(2)}</span>
-                </p>
-                <p className="text-gray-600">
-                    If you accept, the service will be officially **Accepted**, and the chat will open for coordination. If you reject, the booking will be **Rejected** and cancelled.
-                </p>
-                
-                <div className="flex space-x-4 pt-4">
-                    <button 
-                        onClick={() => handleConfirm(true)} 
-                        disabled={loading}
-                        className="flex-1 bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition disabled:bg-gray-400"
-                    >
-                        {loading ? 'Confirming...' : 'Accept Price'}
-                    </button>
-                    <button 
-                        onClick={() => handleConfirm(false)} 
-                        disabled={loading}
-                        className="flex-1 bg-red-500 text-white font-bold py-3 rounded-lg hover:bg-red-600 transition disabled:bg-gray-400"
-                    >
-                        Reject Price
-                    </button>
-                </div>
-            </div>
-        </Modal>
-    );
-};
-
 
 export default function App() {
     return (
