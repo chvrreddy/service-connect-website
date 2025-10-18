@@ -5,7 +5,7 @@ const API_BASE_URL = 'http://localhost:3001/api/v1';
 const CURRENCY_SYMBOL = '₹'; // Indian Rupees
 // Mock UPI QR Code URL for deposit - Admin's Account
 // NOTE: Ensure this local image file exists in your project directory
-const MOCK_UPI_QR_CODE_URL = '/qr_code_admin.png'; 
+const MOCK_UPI_QR_CODE_URL = '/IMG_20251017_234756.jpg'; 
 // --- Global Styling Classes (Dark Cyan Theme) ---
 const DARK_CYAN_CLASS = 'bg-[#008080]'; // Main background/button color
 const DARK_CYAN_TEXT_CLASS = 'text-[#008080]'; // Main text/accent color
@@ -359,17 +359,33 @@ const Footer = ({ setPage }) => (
     </footer>
 );
 
-
 const ServiceCard = ({ service, onClick }) => (
-    <div
-        onClick={() => onClick(service)}
-        className="bg-white p-4 rounded-xl shadow-md hover:shadow-lg transform hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col items-center text-center border border-gray-200 group"
-    >
-        <div className="text-3xl mb-2 p-2 bg-blue-50 rounded-full text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-all duration-300">{service.icon || '⚡'}</div>
-        <h3 className="text-md font-bold text-slate-800 mb-1 group-hover:text-blue-600">{service.name}</h3>
-        <p className="text-gray-500 text-xs line-clamp-1">{service.description || 'Professional Service'}</p>
-    </div>
+  <div
+    onClick={() => onClick(service)}
+    className="bg-white p-4 rounded-xl shadow-md hover:shadow-lg transform hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col items-center text-center border border-gray-200 group"
+  >
+    {/* Service Image */}
+    <img
+      src={service.icon_url}
+      alt={service.name}
+      className="w-20 h-20 object-cover rounded-full mb-3 shadow-md border border-gray-200 group-hover:scale-110 transition-all duration-300"
+    />
+
+    {/* Service Name */}
+    <h3 className="text-md font-bold text-slate-800 mb-1 group-hover:text-blue-600">
+      {service.name}
+    </h3>
+
+    {/* Service Description */}
+    <p className="text-gray-500 text-xs line-clamp-1">
+      {service.description || 'Professional Service'}
+    </p>
+  </div>
 );
+
+
+
+
 
 
 const ProviderCard = ({ provider, onClick }) => (
@@ -2001,214 +2017,316 @@ const ProviderBookingRequests = () => {
 
 
 const ProviderProfileManagement = () => {
-    const { user, token, fetchUserProfile } = useAuth();
-    const [profile, setProfile] = useState(null);
-    const [services, setServices] = useState([]);
-    const [profilePhotoFile, setProfilePhotoFile] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
+  const { user, token } = useAuth(); // removed fetchUserProfile to avoid re-render loop
+  const [profile, setProfile] = useState(null);
+  const [services, setServices] = useState([]);
+  const [profilePhotoFile, setProfilePhotoFile] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
-    // FIX: useCallback ensures this function definition is stable, preventing re-render loop ("blinking")
-    const fetchData = useCallback(async () => {
-        if (!token || user?.role !== 'provider') {
-             setLoading(false);
-             return;
-        }
-        setLoading(true);
-        setError('');
-        
-        try {
-            const res = await fetch(`${API_BASE_URL}/provider/profile`, {
-                headers: { 'x-auth-token': token },
-            });
-            
-            if (!res.ok) {
-                const errorText = await res.json(); 
-                throw new Error(errorText.error || `Failed to fetch profile. Status: ${res.status}`);
-            }
-            const profileData = await res.json();
-            setProfile(profileData.provider_profile);
-            
-            const servicesRes = await fetch(`${API_BASE_URL}/services`);
-            const servicesData = await servicesRes.json();
-            setServices(servicesData || []);
+  // ✅ Stable fetchData function
+  const fetchData = useCallback(async () => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
 
-            // Refresh main user profile to ensure photo URL is latest
-            await fetchUserProfile(token);
+    if (user?.role !== 'provider') {
+      setError('Only providers can access this page.');
+      setLoading(false);
+      return;
+    }
 
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    }, [token, user, fetchUserProfile]); // Only run when these dependencies change
+    try {
+      setLoading(true);
+      setError('');
 
-    useEffect(() => {
-        // FIX: The component now relies entirely on the stable fetchData function
-        fetchData();
-    }, [fetchData]);
+      // Fetch provider profile
+      const res = await fetch(`${API_BASE_URL}/provider/profile`, {
+        headers: { 'x-auth-token': token },
+      });
 
-    const handlePhotoChange = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            setProfilePhotoFile(file);
-        }
+      if (!res.ok) {
+        const errorText = await res.json();
+        throw new Error(errorText.error || `Failed to fetch profile. Status: ${res.status}`);
+      }
+
+      const profileData = await res.json();
+      setProfile(profileData.provider_profile);
+
+      // Fetch services list
+      const servicesRes = await fetch(`${API_BASE_URL}/services`);
+      const servicesData = await servicesRes.json();
+      setServices(servicesData || []);
+
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [token, user?.role]); // ✅ Stable dependency list
+
+  // Fetch data once when component mounts
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Handle profile photo change
+  const handlePhotoChange = (e) => {
+    const file = e.target.files[0];
+    if (file) setProfilePhotoFile(file);
+  };
+
+  // Handle profile submission
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    setLoading(true);
+
+    const formData = new FormData(e.target);
+    const serviceIds = formData.get('primary_service_id')
+      ? [formData.get('primary_service_id')]
+      : [];
+
+    if (serviceIds.length === 0) {
+      setError('Please select a primary service category.');
+      setLoading(false);
+      return;
+    }
+
+    const profileData = {
+      display_name: formData.get('display_name'),
+      bio: formData.get('bio'),
+      location_lat: parseFloat(formData.get('location_lat')),
+      location_lon: parseFloat(formData.get('location_lon')),
+      service_radius_km: parseInt(formData.get('service_radius_km'), 10),
+      service_ids: serviceIds,
+      payout_upi_id: formData.get('payout_upi_id'),
     };
 
+    try {
+      // 1️⃣ Update text profile details
+      let response = await fetch(`${API_BASE_URL}/provider/profile`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token,
+        },
+        body: JSON.stringify(profileData),
+      });
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setError(''); setSuccess(''); setLoading(true);
-        const formData = new FormData(e.target);
-        
-        const serviceIds = formData.get('primary_service_id') ? [formData.get('primary_service_id')] : [];
-        
-        if (serviceIds.length === 0) {
-            setError('Please select a primary service category.');
-            setLoading(false);
-            return;
-        }
-        
-        const profileData = {
-            display_name: formData.get('display_name'),
-            bio: formData.get('bio'),
-            location_lat: parseFloat(formData.get('location_lat')),
-            location_lon: parseFloat(formData.get('location_lon')),
-            service_radius_km: parseInt(formData.get('service_radius_km'), 10),
-            service_ids: serviceIds,
-            payout_upi_id: formData.get('payout_upi_id')
-        };
-        
-        try {
-            // 1. Update text profile details (including UPI)
-            let response = await fetch(`${API_BASE_URL}/provider/profile`, {
-                method: 'POST', 
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-auth-token': token,
-                },
-                body: JSON.stringify(profileData),
-            });
-            
-            let data = await response.json();
-            
-            if (!response.ok) {
-                 throw new Error(data.error || 'Failed to update basic profile.');
-            }
+      let data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to update basic profile.');
 
-            // 2. Upload photo if file exists
-            if (profilePhotoFile) {
-                const photoFormData = new FormData();
-                photoFormData.append('profile_photo', profilePhotoFile);
-                
-                response = await fetch(`${API_BASE_URL}/user/profile-photo`, {
-                    method: 'POST',
-                    headers: { 'x-auth-token': token },
-                    body: photoFormData,
-                });
-                
-                data = await response.json();
-                if (!response.ok) {
-                    throw new Error(data.error || 'Failed to upload profile photo.');
-                }
-            }
+      // 2️⃣ Upload photo if selected
+      if (profilePhotoFile) {
+        const photoFormData = new FormData();
+        photoFormData.append('profile_photo', profilePhotoFile);
 
-            setSuccess('Profile updated successfully!');
-            await fetchData(); // Refresh data
-            setProfilePhotoFile(null);
-            
-        } catch (err) {
-            setError(err.message || 'A network error occurred while submitting the update.');
-        } finally {
-            setLoading(false);
-        }
-    };
-    
-    if (loading) return <Spinner />;
-    if (error && !profile) return <ErrorMessage message={error} />;
-    if (!profile) return <ErrorMessage message="Provider profile data is missing. Please contact support or complete initial setup." />;
+        response = await fetch(`${API_BASE_URL}/user/profile-photo`, {
+          method: 'POST',
+          headers: { 'x-auth-token': token },
+          body: photoFormData,
+        });
 
-    const currentServiceId = profile.service_ids && profile.service_ids.length > 0 
-        ? profile.service_ids[0] 
-        : (services[0]?.id || '');
-    
+        data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to upload profile photo.');
+      }
+
+      setSuccess('Profile updated successfully!');
+      setProfilePhotoFile(null);
+      await fetchData(); // Refresh profile data
+
+    } catch (err) {
+      setError(err.message || 'A network error occurred while updating the profile.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ Conditional rendering
+  if (loading) return <Spinner />;
+  if (error && !profile) return <ErrorMessage message={error} />;
+  if (!profile)
     return (
-        <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-slate-700">Manage Your Public Profile</h2>
-            
-            {error && <ErrorMessage message={error}/>}
-            {success && <SuccessMessage message={success}/>}
-            
-            <form onSubmit={handleSubmit} className="space-y-6 bg-gray-50 p-6 rounded-xl border">
-                
-                <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>Profile Picture</h3>
-                <div className="flex items-center space-x-6">
-                    <img 
-                        src={profilePhotoFile ? URL.createObjectURL(profilePhotoFile) : getPhotoUrl(user)} 
-                        alt="Current Profile" 
-                        className="w-24 h-24 rounded-full object-cover shadow-lg border-4 border-white ring-2 ring-cyan-500" 
-                    />
-                    <div>
-                        <input 
-                            id="profile_photo"
-                            type="file" 
-                            accept="image/*"
-                            onChange={handlePhotoChange}
-                            className="text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-cyan-50 file:text-cyan-700 hover:file:bg-cyan-100"
-                            disabled={loading}
-                        />
-                        {profilePhotoFile && <p className="text-sm text-green-600 mt-1">Ready to upload: {profilePhotoFile.name}</p>}
-                    </div>
-                </div>
-
-                <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>Basic Details</h3>
-                <div>
-                    <label htmlFor="display_name" className="block text-sm font-semibold text-gray-700">Display Name</label>
-                    <input id="display_name" name="display_name" type="text" defaultValue={profile.display_name} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
-                </div>
-                
-                 <div>
-                    <label htmlFor="primary_service_id" className="block text-sm font-semibold text-gray-700">Primary Service Category</label>
-                    <select id="primary_service_id" name="primary_service_id" defaultValue={currentServiceId} required 
-                        className="mt-1 block w-full pl-4 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition">
-                        {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                </div>
-                
-                <div>
-                    <label htmlFor="bio" className="block text-sm font-semibold text-gray-700">Short Bio / Expertise Summary</label>
-                    <textarea id="bio" name="bio" rows="4" defaultValue={profile.bio} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" placeholder="Describe your services and experience (Max 250 chars)..."></textarea>
-                </div>
-                
-                <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>Service Area</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                     <div>
-                        <label htmlFor="location_lat" className="block text-sm font-semibold text-gray-700">Location Latitude (Home Base)</label>
-                        <input id="location_lat" name="location_lat" type="number" step="any" defaultValue={profile.location_lat} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
-                    </div>
-                     <div>
-                        <label htmlFor="location_lon" className="block text-sm font-semibold text-gray-700">Location Longitude</label>
-                        <input id="location_lon" name="location_lon" type="number" step="any" defaultValue={profile.location_lon} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
-                    </div>
-                     <div>
-                        <label htmlFor="service_radius_km" className="block text-sm font-semibold text-gray-700">Service Radius (km)</label>
-                        <input id="service_radius_km" name="service_radius_km" type="number" defaultValue={profile.service_radius_km} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" />
-                    </div>
-                </div>
-
-                <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>Payout Details</h3>
-                <div>
-                    <label htmlFor="payout_upi_id" className="block text-sm font-semibold text-gray-700">Primary Payout UPI ID / Bank Details</label>
-                    <input id="payout_upi_id" name="payout_upi_id" type="text" defaultValue={profile.payout_upi_id} required className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg" placeholder="E.g., yourname@bank or A/C: 1234"/>
-                </div>
-                
-                <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition shadow-md disabled:bg-gray-400">
-                    {loading ? 'Saving Profile...' : 'Save Profile Updates'}
-                </button>
-            </form>
-        </div>
+      <ErrorMessage message="Provider profile data is missing. Please complete your setup or contact support." />
     );
+
+  const currentServiceId =
+    profile.service_ids && profile.service_ids.length > 0
+      ? profile.service_ids[0]
+      : services[0]?.id || '';
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold text-slate-700">Manage Your Public Profile</h2>
+
+      {error && <ErrorMessage message={error} />}
+      {success && <SuccessMessage message={success} />}
+
+      <form onSubmit={handleSubmit} className="space-y-6 bg-gray-50 p-6 rounded-xl border">
+
+        {/* Profile Picture */}
+        <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>
+          Profile Picture
+        </h3>
+        <div className="flex items-center space-x-6">
+          <img
+            src={profilePhotoFile ? URL.createObjectURL(profilePhotoFile) : getPhotoUrl(user)}
+            alt="Current Profile"
+            className="w-24 h-24 rounded-full object-cover shadow-lg border-4 border-white ring-2 ring-cyan-500"
+          />
+          <div>
+            <input
+              id="profile_photo"
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoChange}
+              className="text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-full 
+              file:border-0 file:text-sm file:font-semibold file:bg-cyan-50 file:text-cyan-700 
+              hover:file:bg-cyan-100"
+              disabled={loading}
+            />
+            {profilePhotoFile && (
+              <p className="text-sm text-green-600 mt-1">
+                Ready to upload: {profilePhotoFile.name}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Basic Details */}
+        <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>
+          Basic Details
+        </h3>
+        <div>
+          <label htmlFor="display_name" className="block text-sm font-semibold text-gray-700">
+            Display Name
+          </label>
+          <input
+            id="display_name"
+            name="display_name"
+            type="text"
+            defaultValue={profile.display_name}
+            required
+            className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="primary_service_id" className="block text-sm font-semibold text-gray-700">
+            Primary Service Category
+          </label>
+          <select
+            id="primary_service_id"
+            name="primary_service_id"
+            defaultValue={currentServiceId}
+            required
+            className="mt-1 block w-full pl-4 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition"
+          >
+            {services.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label htmlFor="bio" className="block text-sm font-semibold text-gray-700">
+            Short Bio / Expertise Summary
+          </label>
+          <textarea
+            id="bio"
+            name="bio"
+            rows="4"
+            defaultValue={profile.bio}
+            required
+            className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg"
+            placeholder="Describe your services and experience (Max 250 chars)..."
+          ></textarea>
+        </div>
+
+        {/* Service Area */}
+        <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>
+          Service Area
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label htmlFor="location_lat" className="block text-sm font-semibold text-gray-700">
+              Location Latitude
+            </label>
+            <input
+              id="location_lat"
+              name="location_lat"
+              type="number"
+              step="any"
+              defaultValue={profile.location_lat}
+              required
+              className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div>
+            <label htmlFor="location_lon" className="block text-sm font-semibold text-gray-700">
+              Location Longitude
+            </label>
+            <input
+              id="location_lon"
+              name="location_lon"
+              type="number"
+              step="any"
+              defaultValue={profile.location_lon}
+              required
+              className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div>
+            <label htmlFor="service_radius_km" className="block text-sm font-semibold text-gray-700">
+              Service Radius (km)
+            </label>
+            <input
+              id="service_radius_km"
+              name="service_radius_km"
+              type="number"
+              defaultValue={profile.service_radius_km}
+              required
+              className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg"
+            />
+          </div>
+        </div>
+
+        {/* Payout Details */}
+        <h3 className={`text-lg font-semibold ${DARK_CYAN_TEXT_CLASS} border-b pb-2`}>
+          Payout Details
+        </h3>
+        <div>
+          <label htmlFor="payout_upi_id" className="block text-sm font-semibold text-gray-700">
+            Primary Payout UPI ID / Bank Details
+          </label>
+          <input
+            id="payout_upi_id"
+            name="payout_upi_id"
+            type="text"
+            defaultValue={profile.payout_upi_id}
+            required
+            className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg"
+            placeholder="E.g., yourname@bank or A/C: 1234"
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 
+          transition shadow-md disabled:bg-gray-400"
+        >
+          {loading ? 'Saving Profile...' : 'Save Profile Updates'}
+        </button>
+      </form>
+    </div>
+  );
 };
 
 
@@ -2914,57 +3032,53 @@ const HomePage = ({ setPage, setSelectedService, setSearchParams,setSelectedProv
   return (
     <main>
       {/* HERO SECTION */}
-      <section className={`${DARK_CYAN_CLASS} pt-0 pb-40 relative overflow-hidden`}>
-        {/* Full-width Background Image */}
-        <div className="absolute inset-0 w-full h-[500px]">
-          <img
-            src="https://placehold.co/1200x500/008080/ffffff?text=Service+Connect+Hero"
+      <section className={`${DARK_CYAN_CLASS} pt-0 pb-16 relative overflow-hidden`}>
+    {/* Full-width Background Image - DECREASED HEIGHT */}
+    <div className="absolute inset-0 w-full h-[450px]">
+        <img
+            src="/home_image.jpg"
             alt="Trusted experts team graphic"
-            className="w-full h-full object-cover object-center"
-          />
-          {/* Overlay for better contrast */}
-          <div className="absolute inset-0 bg-black/40"></div>
-        </div>
+            className="w-full h-full object-cover object-center brightness-110"
+        />
+        <div className="absolute inset-0 bg-black/10"></div>
+    </div>
 
-        {/* Text & Search Overlay */}
-        <div className="relative z-10 flex flex-col items-center justify-center text-center pt-32 px-6">
-          {/* Transparent Gradient Heading */}
-          <h1 className="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-200 to-blue-500 drop-shadow-md mb-10 whitespace-nowrap">
-            Your trusted experts at your doorstep
-          </h1>
 
-          {/* Search Bar */}
-          <div className="bg-white/90 backdrop-blur-md p-3 rounded-2xl shadow-lg flex flex-col md:flex-row items-center space-y-2 md:space-y-0 md:space-x-2 max-w-3xl w-full">
+    {/* Text & Search Overlay - MATCHING IMAGE HEIGHT AND INCREASED BOTTOM PADDING */}
+    {/* h-[450px] matches the new image height. pb-20 moves the search bar higher. */}
+    <div className="relative z-10 flex flex-col items-center justify-end text-center h-[450px] pt-0 pb-20 px-6">
+        
+        {/* Search Bar */}
+        <div className="bg-white/90 backdrop-blur-md p-2 rounded-2xl shadow-lg flex flex-col md:flex-row items-center space-y-2 md:space-y-0 md:space-x-2 max-w-3xl w-full">
             {/* Service Input */}
             <input
-              type="text"
-              placeholder="What service are you looking for?"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-grow p-3 rounded-lg text-base focus:outline-none border border-gray-200 focus:ring-2 focus:ring-blue-400 transition-all duration-200"
+                type="text"
+                placeholder="What service are you looking for?"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="flex-grow p-2 rounded-lg text-base focus:outline-none border border-gray-200 focus:ring-2 focus:ring-blue-400 transition-all duration-200"
             />
             {/* Location Input */}
             <div className="relative flex items-center w-full md:w-auto">
-              <span className="absolute left-3 text-gray-400">📍</span>
-              <input
-                type="text"
-                placeholder="Your Location (e.g., Lat, Lon)"
-                value={searchLocation}
-                onChange={(e) => setSearchLocation(e.target.value)}
-                className="pl-8 p-3 rounded-lg text-base w-full border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all duration-200"
-              />
+                <span className="absolute left-3 text-gray-400">📍</span>
+                <input
+                    type="text"
+                    placeholder="Your Location (e.g., Lat, Lon)"
+                    value={searchLocation}
+                    onChange={(e) => setSearchLocation(e.target.value)}
+                    className="pl-8 p-2 rounded-lg text-base w-full border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all duration-200"
+                />
             </div>
             {/* Search Button */}
             <button
-              onClick={handleSearch}
-              className={`${DARK_CYAN_CLASS} text-white font-bold px-6 py-3 rounded-xl ${DARK_CYAN_HOVER_CLASS} transition-all duration-200 w-full md:w-auto text-base shadow-md`}
+                onClick={handleSearch}
+                className={`${DARK_CYAN_CLASS} text-white font-bold px-6 py-2 rounded-xl ${DARK_CYAN_HOVER_CLASS} transition-all duration-200 w-full md:w-auto text-base shadow-md`}
             >
-              Search
+                Search
             </button>
-          </div>
         </div>
-      </section>
-
+    </div>
+</section>
       {/* FIX: POPULAR SERVICES SECTION (Moved to top of content) */}
       <section className="py-16 -mt-32 relative z-20 bg-gray-50">
         <div className="container mx-auto px-6">
