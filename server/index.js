@@ -78,10 +78,17 @@ app.use('/api/v1', require('./src/routes/paymentRoutes'));
 app.use('/api/v1', require('./src/routes/adminRoutes'));
 
 
-// --- SERVER START ---
-const PORT = process.env.PORT || 3001; 
+// // --- SERVER START ---
+// const PORT = process.env.PORT || 3001; 
+
+// app.listen(PORT, () => {
+//     console.log(`Server is running at http://localhost:${PORT}`); 
+//     console.log(`Nodemailer is configured for: ${process.env.EMAIL_USER}`);
+
+// Use the PORT environment variable provided by Render, 
+// or default to 10000 for local testing.
+const PORT = process.env.PORT || 10000; 
 
 app.listen(PORT, () => {
-    console.log(`Server is running at http://localhost:${PORT}`); 
-    console.log(`Nodemailer is configured for: ${process.env.EMAIL_USER}`);
+    console.log(`Server is running on port ${PORT}`);
 });
