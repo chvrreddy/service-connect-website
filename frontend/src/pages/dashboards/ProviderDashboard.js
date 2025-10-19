@@ -1,12 +1,10 @@
-// frontend/src/pages/dashboards/ProviderDashboard.js
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { 
     API_BASE_URL, 
     CURRENCY_SYMBOL, 
-    DARK_CYAN_CLASS, 
-    DARK_CYAN_HOVER_CLASS,
+    // DARK_CYAN_CLASS removed (was unused)
+    // DARK_CYAN_HOVER_CLASS removed (was unused)
     DARK_CYAN_TEXT_CLASS,
     getPhotoUrl 
 } from '../utils/helpers';
@@ -311,7 +309,7 @@ const ProviderBookingRequests = () => {
 
 
 const ProviderProfileManagement = () => {
-  const { user, token } = useAuth(); // removed fetchUserProfile to avoid re-render loop
+  const { user, token } = useAuth();
   const [profile, setProfile] = useState(null);
   const [services, setServices] = useState([]);
   const [profilePhotoFile, setProfilePhotoFile] = useState(null);
@@ -319,7 +317,6 @@ const ProviderProfileManagement = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // ✅ Stable fetchData function
   const fetchData = useCallback(async () => {
     if (!token) {
       setLoading(false);
@@ -336,7 +333,6 @@ const ProviderProfileManagement = () => {
       setLoading(true);
       setError('');
 
-      // Fetch provider profile
       const res = await fetch(`${API_BASE_URL}/provider/profile`, {
         headers: { 'x-auth-token': token },
       });
@@ -349,7 +345,6 @@ const ProviderProfileManagement = () => {
       const profileData = await res.json();
       setProfile(profileData.provider_profile);
 
-      // Fetch services list
       const servicesRes = await fetch(`${API_BASE_URL}/services`);
       const servicesData = await servicesRes.json();
       setServices(servicesData || []);
@@ -359,20 +354,17 @@ const ProviderProfileManagement = () => {
     } finally {
       setLoading(false);
     }
-  }, [token, user?.role]); // ✅ Stable dependency list
+  }, [token, user?.role]);
 
-  // Fetch data once when component mounts
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  // Handle profile photo change
   const handlePhotoChange = (e) => {
     const file = e.target.files[0];
     if (file) setProfilePhotoFile(file);
   };
 
-  // Handle profile submission
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -440,7 +432,6 @@ const ProviderProfileManagement = () => {
     }
   };
 
-  // ✅ Conditional rendering
   if (loading) return <Spinner />;
   if (error && !profile) return <ErrorMessage message={error} />;
   if (!profile)
