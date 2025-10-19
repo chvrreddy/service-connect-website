@@ -4,7 +4,7 @@ import { API_BASE_URL, DARK_CYAN_CLASS, DARK_CYAN_HOVER_CLASS } from '../../page
 import { ErrorMessage, SuccessMessage } from '../shared/UI';
 
 
-// --- 1. Shared Auth Container ---
+// --- Shared Auth Container ---
 export const AuthFormContainer = ({ children, title }) => (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
         <div className="sm:mx-auto sm:w-full sm:max-w-md">
@@ -19,8 +19,56 @@ export const AuthFormContainer = ({ children, title }) => (
 );
 
 
-// --- 2. OTP Verification Page (Used Internally by RegisterPage) ---
-// Defined early to ensure visibility by RegisterPage.
+// --- Login Page ---
+export const LoginPage = ({ setPage }) => {
+    const { login } = useAuth();
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+    
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+        const email = e.target.email.value;
+        const password = e.target.password.value;
+        const result = await login(email, password);
+        setLoading(false);
+        if (result.success) {
+             if (result.role === 'admin') setPage('adminDashboard');
+             else if (result.role === 'provider') setPage('providerDashboard');
+             else setPage('customerDashboard');
+        } else {
+            setError(result.message || 'Invalid credentials.');
+        }
+    };
+    
+    return (
+        <AuthFormContainer title="Sign in to Service Connect">
+            <form className="space-y-6" onSubmit={handleSubmit}>
+                <div>
+                    <label htmlFor="email" className="block text-sm font-semibold text-gray-700">Email address</label>
+                    <input id="email" name="email" type="email" required className="mt-1 appearance-none block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 transition"/>
+                </div>
+                <div>
+                    <label htmlFor="password" className="block text-sm font-semibold text-gray-700">Password</label>
+                    <input id="password" name="password" type="password" required className="mt-1 appearance-none block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 transition"/>
+                </div>
+                {error && <ErrorMessage message={error}/>}
+                <div className="text-sm text-right">
+                    <a onClick={() => setPage('forgotPassword')} className="font-medium text-blue-600 hover:text-blue-700 cursor-pointer transition">Forgot your password?</a>
+                </div>
+                <button type="submit" disabled={loading} className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-md font-bold text-white bg-blue-600 hover:bg-blue-700 transition disabled:bg-gray-400">
+                    {loading ? 'Signing in...' : 'Sign in'}
+                </button>
+            </form>
+            <div className="mt-6 text-center text-sm">
+                Don't have an account? <a onClick={() => setPage('register')} className="font-medium text-blue-600 hover:text-blue-700 cursor-pointer transition">Register here</a>
+            </div>
+        </AuthFormContainer>
+    );
+};
+
+// --- OTP Verification Page (Hidden component, used by RegisterPage) ---
 export const RegisterOtpPage = ({ email, password, role, primaryServiceId, setPage }) => {
     const { verifyOtp, login } = useAuth();
     const [error, setError] = useState('');
@@ -77,57 +125,7 @@ export const RegisterOtpPage = ({ email, password, role, primaryServiceId, setPa
 };
 
 
-// --- 3. Login Page (Renders AuthFormContainer) ---
-export const LoginPage = ({ setPage }) => {
-    const { login } = useAuth();
-    const [error, setError] = useState('');
-    const [loading, setLoading] = useState(false);
-    
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setError('');
-        setLoading(true);
-        const email = e.target.email.value;
-        const password = e.target.password.value;
-        const result = await login(email, password);
-        setLoading(false);
-        if (result.success) {
-             if (result.role === 'admin') setPage('adminDashboard');
-             else if (result.role === 'provider') setPage('providerDashboard');
-             else setPage('customerDashboard');
-        } else {
-            setError(result.message || 'Invalid credentials.');
-        }
-    };
-    
-    return (
-        <AuthFormContainer title="Sign in to Service Connect">
-            <form className="space-y-6" onSubmit={handleSubmit}>
-                <div>
-                    <label htmlFor="email" className="block text-sm font-semibold text-gray-700">Email address</label>
-                    <input id="email" name="email" type="email" required className="mt-1 appearance-none block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 transition"/>
-                </div>
-                <div>
-                    <label htmlFor="password" className="block text-sm font-semibold text-gray-700">Password</label>
-                    <input id="password" name="password" type="password" required className="mt-1 appearance-none block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 transition"/>
-                </div>
-                {error && <ErrorMessage message={error}/>}
-                <div className="text-sm text-right">
-                    <a onClick={() => setPage('forgotPassword')} className="font-medium text-blue-600 hover:text-blue-700 cursor-pointer transition">Forgot your password?</a>
-                </div>
-                <button type="submit" disabled={loading} className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-md font-bold text-white bg-blue-600 hover:bg-blue-700 transition disabled:bg-gray-400">
-                    {loading ? 'Signing in...' : 'Sign in'}
-                </button>
-            </form>
-            <div className="mt-6 text-center text-sm">
-                Don't have an account? <a onClick={() => setPage('register')} className="font-medium text-blue-600 hover:text-blue-700 cursor-pointer transition">Register here</a>
-            </div>
-        </AuthFormContainer>
-    );
-};
-
-
-// --- 4. Register Page (Renders AuthFormContainer and RegisterOtpPage) ---
+// --- Register Page ---
 export const RegisterPage = ({ setPage }) => {
     const { register } = useAuth();
     const [error, setError] = useState('');
@@ -174,7 +172,8 @@ export const RegisterPage = ({ setPage }) => {
     
     // Switch to OTP verification page if registration initiated
     if (isRegistered) {
-        // Uses RegisterOtpPage, which is defined above
+        // FIX: Passing primaryServiceId to the OTP page
+        // THIS IS WHERE RegisterOtpPage IS USED:
         return <RegisterOtpPage email={regEmail} password={regPassword} role={regRole} primaryServiceId={primaryService} setPage={setPage} />;
     }
 
@@ -219,8 +218,7 @@ export const RegisterPage = ({ setPage }) => {
     );
 };
 
-
-// --- 5. Forgot Password Page (Renders AuthFormContainer) ---
+// --- Forgot Password Page ---
 export const ForgotPasswordPage = ({ setPage }) => {
     const { sendOtp, resetPassword } = useAuth();
     const [step, setStep] = useState(1);
@@ -307,8 +305,7 @@ export const ForgotPasswordPage = ({ setPage }) => {
     );
 };
 
-
-// --- 6. Provider Setup Page (Renders AuthFormContainer) ---
+// --- Provider Setup Page ---
 export const ProviderSetupPage = ({ setPage, pageData }) => {
     const { token } = useAuth();
     const [error, setError] = useState('');

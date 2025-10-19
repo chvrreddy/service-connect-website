@@ -1,9 +1,11 @@
+// frontend/src/components/shared/UI.js
+
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { 
     DARK_CYAN_CLASS, 
     DARK_CYAN_TEXT_CLASS, 
-    // DARK_CYAN_HOVER_CLASS removed (was unused)
+    DARK_CYAN_HOVER_CLASS,
     getPhotoUrl 
 } from '../../pages/utils/helpers';
 
@@ -46,20 +48,19 @@ export const Header = ({ setPage }) => {
         <header className={`${DARK_CYAN_CLASS} text-white shadow-lg sticky top-0 z-50`}>
             <nav className="container mx-auto px-6 py-4 flex justify-between items-center">
                 {/* Home Text Link */}
-                <button type="button" onClick={() => setPage('home')} className="cursor-pointer text-2xl font-extrabold flex items-center group hover:text-cyan-200 transition">
+                <div onClick={() => setPage('home')} className="cursor-pointer text-2xl font-extrabold flex items-center group hover:text-cyan-200 transition">
                     Service Connect
-                </button>
+                </div>
                 <div className="hidden md:flex items-center space-x-8">
-                    {/* FIX: Replaced <a> with <button> */}
-                    <button type="button" onClick={() => setPage('home')} className="hover:text-cyan-200 font-medium cursor-pointer transition duration-150">Home</button>
-                    <button type="button" onClick={() => setPage('allServices')} className="hover:text-cyan-200 font-medium cursor-pointer transition duration-150">Services</button>
-                    <button type="button" onClick={() => setPage('about')} className="hover:text-cyan-200 font-medium cursor-pointer transition duration-150">About</button>
-                    <button type="button" onClick={() => setPage('contact')} className="hover:text-cyan-200 font-medium cursor-pointer transition duration-150">Contact</button>
+                    <a onClick={() => setPage('home')} className="hover:text-cyan-200 font-medium cursor-pointer transition duration-150">Home</a>
+                    <a onClick={() => setPage('allServices')} className="hover:text-cyan-200 font-medium cursor-pointer transition duration-150">Services</a>
+                    <a onClick={() => setPage('about')} className="hover:text-cyan-200 font-medium cursor-pointer transition duration-150">About</a>
+                    <a onClick={() => setPage('contact')} className="hover:text-cyan-200 font-medium cursor-pointer transition duration-150">Contact</a>
                 </div>
                 <div className="flex items-center space-x-4">
                     {isAuthenticated ? (
                         <>
-                            {/* FIX: Notification Bell */}
+                            {/* FIX: Notification Bell (Only for Customer/Provider) */}
                             {user.role !== 'admin' && (
                                 <button 
                                     onClick={() => setPage(getDashboardPage())} 
@@ -82,7 +83,7 @@ export const Header = ({ setPage }) => {
                                 className="w-8 h-8 rounded-full object-cover border-2 border-white cursor-pointer" 
                                 onClick={() => setPage(getDashboardPage())}
                             />
-                            <button type="button" onClick={() => setPage(getDashboardPage())} className="text-white font-semibold hover:text-cyan-200 transition relative hidden sm:block">
+                            <button onClick={() => setPage(getDashboardPage())} className="text-white font-semibold hover:text-cyan-200 transition relative hidden sm:block">
                                 Dashboard
                             </button>
                             <button onClick={handleLogout} className="bg-red-500 text-white px-4 py-2 rounded-lg shadow-md hover:bg-red-600 transition">
@@ -109,36 +110,35 @@ export const Footer = ({ setPage }) => (
                 <div>
                     <h4 className="font-semibold mb-4 text-gray-200">What Our Customers Say</h4>
                     <ul className="space-y-2 text-sm">
-                        {/* FIX: Replaced <a> with <button> */}
-                        <li><button type="button" className="text-gray-400 hover:text-cyan-400 cursor-pointer transition">Testimonials</button></li>
-                        <li><button type="button" className="text-gray-400 hover:text-cyan-400 cursor-pointer transition">Reviews</button></li>
+                        <li><a className="text-gray-400 hover:text-cyan-400 cursor-pointer transition">Testimonials</a></li>
+                        <li><a className="text-gray-400 hover:text-cyan-400 cursor-pointer transition">Reviews</a></li>
                     </ul>
                 </div>
                 {/* Section 2: Company */}
                 <div>
                     <h4 className="font-semibold mb-4 text-gray-200">Company</h4>
                     <ul className="space-y-2 text-sm">
-                        <li><button type="button" onClick={() => setPage('about')} className="text-gray-400 hover:text-cyan-400 cursor-pointer transition">About Us</button></li>
-                        <li><button type="button" onClick={() => setPage('contact')} className="text-gray-400 hover:text-cyan-400 cursor-pointer transition">Contact Us</button></li>
-                        <li><button type="button" className="text-gray-400 hover:text-cyan-400 cursor-pointer transition">Careers</button></li>
+                        <li><a onClick={() => setPage('about')} className="text-gray-400 hover:text-cyan-400 cursor-pointer transition">About Us</a></li>
+                        <li><a onClick={() => setPage('contact')} className="text-gray-400 hover:text-cyan-400 cursor-pointer transition">Contact Us</a></li>
+                        <li><a className="text-gray-400 hover:text-cyan-400 cursor-pointer transition">Careers</a></li>
                     </ul>
                 </div>
                  {/* Section 3: Services */}
                 <div>
                     <h4 className="font-semibold mb-4 text-gray-200">Services</h4>
                     <ul className="space-y-2 text-sm">
-                        <li><button type="button" onClick={() => setPage('allServices')} className="text-gray-400 hover:text-cyan-400 cursor-pointer transition">All Services</button></li>
-                        <li><button type="button" className="text-gray-400 hover:text-cyan-400 cursor-pointer transition">Terms & Privacy</button></li>
+                        <li><a onClick={() => setPage('allServices')} className="text-gray-400 hover:text-cyan-400 cursor-pointer transition">All Services</a></li>
+                        <li><a className="text-gray-400 hover:text-cyan-400 cursor-pointer transition">Terms & Privacy</a></li>
                     </ul>
                 </div>
                 {/* Section 4: Connect With Us */}
                 <div className="col-span-2 md:col-span-2">
                     <h4 className="font-semibold mb-4 text-gray-200">Connect With Us</h4>
                     <div className="flex space-x-4 text-2xl">
-                        {/* Placeholder Social Icons - Replaced with buttons just in case, though usually fine as <a> with href="#" or role="link" */}
-                        <button type="button" className="text-gray-400 hover:text-cyan-400 transition">f</button>
-                        <button type="button" className="text-gray-400 hover:text-cyan-400 transition">t</button>
-                        <button type="button" className="text-gray-400 hover:text-cyan-400 transition">in</button>
+                        {/* Placeholder Social Icons */}
+                        <a className="text-gray-400 hover:text-cyan-400 transition">f</a>
+                        <a className="text-gray-400 hover:text-cyan-400 transition">t</a>
+                        <a className="text-gray-400 hover:text-cyan-400 transition">in</a>
                     </div>
                 </div>
             </div>
@@ -162,14 +162,12 @@ export const DashboardLayout = ({ children, navItems, activeTab, setActiveTab, t
                             <ul>
                                {navItems.map(item => (
                                     <li key={item.tab} className="mb-1">
-                                         {/* FIX: Replaced <a> with <button> */}
-                                         <button
-                                             type="button"
+                                         <a
                                              onClick={() => setActiveTab(item.tab)}
-                                             className={`block w-full text-left px-4 py-3 rounded-lg cursor-pointer transition-colors text-lg ${activeTab === item.tab ? `${DARK_CYAN_CLASS} text-white font-bold shadow-md` : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-700'}`}
+                                             className={`block px-4 py-3 rounded-lg cursor-pointer transition-colors text-lg ${activeTab === item.tab ? `${DARK_CYAN_CLASS} text-white font-bold shadow-md` : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-700'}`}
                                          >
                                              {item.label}
-                                         </button>
+                                         </a>
                                      </li>
                                 ))}
                             </ul>

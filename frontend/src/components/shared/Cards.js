@@ -1,10 +1,7 @@
+// frontend/src/components/shared/Cards.js
+
 import React from 'react';
-import { 
-    DARK_CYAN_CLASS, 
-    DARK_CYAN_HOVER_CLASS,
-    DARK_CYAN_TEXT_CLASS,
-    // CURRENCY_SYMBOL removed (was unused)
-} from '../../pages/utils/helpers';
+import { DARK_CYAN_CLASS, DARK_CYAN_HOVER_CLASS,DARK_CYAN_TEXT_CLASS,CURRENCY_SYMBOL } from '../../pages/utils/helpers';
 
 export const ServiceCard = ({ service, onClick }) => (
   <div
@@ -15,7 +12,7 @@ export const ServiceCard = ({ service, onClick }) => (
     <img
       src={service.icon_url}
       alt={service.name}
-      className="w-20 h-20 rounded-full object-cover mb-3 shadow-md border border-gray-200 group-hover:scale-110 transition-all duration-300"
+      className="w-20 h-20 object-cover rounded-full mb-3 shadow-md border border-gray-200 group-hover:scale-110 transition-all duration-300"
     />
 
     {/* Service Name */}
@@ -61,7 +58,6 @@ export const ProviderCard = ({ provider, onClick }) => (
 
 
 export const BookingCard = ({ booking, handleAction, isCustomer, onReviewModalOpen, onChatModalOpen, onPriceConfirmationOpen, onSetPriceOpen }) => {
-    const CURRENCY_SYMBOL = '₹'; // Local variable for CURRENCY_SYMBOL for this component
     // Helper to determine color based on status
     const getStatusClasses = (status) => {
         switch (status) {
@@ -84,7 +80,7 @@ export const BookingCard = ({ booking, handleAction, isCustomer, onReviewModalOp
         ? `Service: ${booking.service_name || 'N/A'}`
         : `Service: ${booking.service_name || 'N/A'}`;
         
-    const amountDisplay = booking.amount ? `${CURRENCY_SYMBOL}${parseFloat(booking.amount).toFixed(2)}` : 'N/A';
+    const amountDisplay = booking.amount ? `₹${parseFloat(booking.amount).toFixed(2)}` : 'N/A';
     
     // Customer Actions
     const customerActions = (
