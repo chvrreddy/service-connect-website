@@ -1,9 +1,8 @@
 // frontend/src/pages/utils/helpers.js
 
 // --- API Configuration ---
-//export const API_BASE_URL = 'http://localhost:3001/api/v1';
+export const API_BASE_URL = 'http://localhost:3001/api/v1';
 
-export const API_BASE_URL = 'https://service-connect-website.onrender.com';
 export const CURRENCY_SYMBOL = '₹'; // Indian Rupees
 // Mock UPI QR Code URL for deposit - Admin's Account
 // NOTE: Ensure this local image file exists in your project directory
