@@ -13,9 +13,16 @@ const multer = require('multer');
 const app = express();
 
 // CRITICAL FIX: CORS MIDDLEWARE 
+// app.use(cors({
+//     origin: 'http://localhost:3000'
+
+// }));
+
 app.use(cors({
-    origin: 'http://localhost:3000'
+    // CHANGE THIS DEFAULT (or ensure environment variable is used)
+    origin: process.env.FRONTEND_URL || 'https://service-connect-website.vercel.app' // <-- USE YOUR LIVE VERCEL DOMAIN HERE
 }));
+
 
 app.use(express.json());
 

@@ -1,7 +1,16 @@
 // frontend/src/pages/utils/helpers.js
 
 // --- API Configuration ---
-export const API_BASE_URL = 'http://localhost:3001/api/v1';
+//export const API_BASE_URL = 'http://localhost:3001/api/v1';
+
+
+// frontend/src/pages/utils/helpers.js
+
+// --- API Configuration ---
+// CHANGE the first part of this line:
+export const API_BASE_URL = 'https://service-connect-website.onrender.com/api/v1'; // <-- USE YOUR LIVE RENDER DOMAIN HERE
+
+
 
 export const CURRENCY_SYMBOL = '₹'; // Indian Rupees
 // Mock UPI QR Code URL for deposit - Admin's Account
