@@ -109,11 +109,18 @@ const multer = require('multer');
 
 const app = express();
 
+
+// In your Render backend's index.js
+app.use(cors({
+    // Replace with your actual Vercel domain
+    origin: ['https://service-connect-website.vercel.app/', 'http://localhost:3000'] 
+}));
+
 // CRITICAL FIX: CORS MIDDLEWARE 
 // NOTE: For production, change 'http://localhost:3000' to your frontend's actual URL (e.g., 'https://your-frontend.onrender.com')
-app.use(cors({
-    origin: 'http://localhost:3000' 
-}));
+// app.use(cors({
+//     origin: 'http://localhost:3000' 
+// }));
 
 app.use(express.json());
 
@@ -197,3 +204,4 @@ app.listen(PORT, () => {
     // This line was commented out in the original, but it is useful for debugging:
     // console.log(`Nodemailer is configured for: ${process.env.EMAIL_USER}`); 
 });
+
