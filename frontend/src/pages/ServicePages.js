@@ -263,7 +263,7 @@ export const ContactPage = () => {
     // Mock details (based on .env context)
     const SUPPORT_EMAIL = 'support@serviceconnect.com'; // Placeholder, assuming a support email
     const PHONE_NUMBER = '+91 80 1234 5678'; // Placeholder
-    const ADDRESS = '101 Tech Park, Bangalore, India'; // Placeholder
+    const ADDRESS = 'Rgukt ongole '; // Placeholder
     
     const handleSubmit = async (e) => {
         e.preventDefault();

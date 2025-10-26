@@ -268,7 +268,9 @@ export const ForgotPasswordPage = ({ setPage }) => {
                 <form className="space-y-6" onSubmit={handleOtpSubmit}>
                      <div>
                         <label htmlFor="otp" className="block text-sm font-semibold text-gray-700">6-Digit OTP</label>
-                        <input id="otp" name="otp" type="text" maxLength="6" required className="mt-1 appearance-none block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 transition"/>
+                        <input id="otp" name="otp" type="text" maxLength="6" required  className="mt-1 appearance-none block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 transition"
+/>
+
                     </div>
                      <div>
                         <label htmlFor="newPassword" className="block text-sm font-semibold text-gray-700">New Password</label>

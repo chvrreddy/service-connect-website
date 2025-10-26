@@ -1,5 +1,3 @@
-// frontend/src/components/shared/Cards.js
-
 import React from 'react';
 import { DARK_CYAN_CLASS, DARK_CYAN_HOVER_CLASS,DARK_CYAN_TEXT_CLASS,CURRENCY_SYMBOL } from '../../pages/utils/helpers';
 
@@ -80,7 +78,8 @@ export const BookingCard = ({ booking, handleAction, isCustomer, onReviewModalOp
         ? `Service: ${booking.service_name || 'N/A'}`
         : `Service: ${booking.service_name || 'N/A'}`;
         
-    const amountDisplay = booking.amount ? `₹${parseFloat(booking.amount).toFixed(2)}` : 'N/A';
+    // FIX: Using CURRENCY_SYMBOL from imports instead of hardcoded '₹'
+    const amountDisplay = booking.amount ? `${CURRENCY_SYMBOL}${parseFloat(booking.amount).toFixed(2)}` : 'N/A';
     
     // Customer Actions
     const customerActions = (
@@ -97,12 +96,14 @@ export const BookingCard = ({ booking, handleAction, isCustomer, onReviewModalOp
             )}
 
             {/* Review & Payment button */}
-            {booking.booking_status === 'completed' && (
+            {/* FIX: Show button if status is 'completed' (for payment) OR 'closed' (for review) */}
+            {(booking.booking_status === 'completed' || booking.booking_status === 'closed') && (
                  <button 
                     className="text-white px-4 py-2 rounded-lg font-semibold transition shadow-md bg-red-500 hover:bg-red-600"
                     onClick={() => onReviewModalOpen(booking)}
                 >
-                    Pay & Review
+                    {/* Dynamic text: 'Pay & Review' OR 'Leave/View Review' */}
+                    {booking.booking_status === 'completed' ? 'Pay & Review' : 'Leave/View Review'}
                 </button>
             )}
             
